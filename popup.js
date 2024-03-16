@@ -9,7 +9,7 @@ document.getElementById('scanButton').addEventListener('click', async () => {
     return;
   }
 
-  const apiKey = 'YOUR_VIRUSTOTAL_API_KEY';
+  const apiKey = '90a0cae6f733f188e170ef946e5adc9daee8887abe26dfff904a50d2b7c8ec4b';
   let formData;
   let endpoint;
 
