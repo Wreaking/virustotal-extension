@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VirusTotal Extension Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .test-section {
+            background: #f5f5f5;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            border-left: 4px solid #2196F3;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .download-link {
+            display: inline-block;
+            background: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 5px;
+        }
+        .suspicious-link {
+            display: inline-block;
+            background: #ff9800;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 5px;
+        }
+        .normal-link {
+            display: inline-block;
+            background: #2196F3;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 5px;
+        }
+        .instructions {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🛡️ VirusTotal Extension Test Page</h1>
+    
+    <div class="instructions">
+        <h3>📋 Testing Instructions</h3>
+        <p>This page tests the VirusTotal browser extension functionality:</p>
+        <ul>
+            <li><strong>Download Links:</strong> Should show download prompt with 🛡️ shield emoji when clicked</li>
+            <li><strong>Suspicious Links:</strong> Should be highlighted with ⚠️ warning and blocked with explanation</li>
+            <li><strong>Normal Links:</strong> Should work normally without interference</li>
+        </ul>
+        <p><strong>Note:</strong> Load this page in a browser with the VirusTotal extension installed and enabled.</p>
+    </div>
+
+    <div class="test-section">
+        <h3>📁 Download Links Test</h3>
+        <p>These links should trigger download prompts with scanning options:</p>
+        <a href="https://example.com/sample.exe" class="download-link">Download .exe File</a>
+        <a href="https://example.com/document.pdf" class="download-link">Download PDF</a>
+        <a href="https://example.com/archive.zip" class="download-link">Download ZIP</a>
+        <a href="https://example.com/installer.msi" class="download-link">Download MSI</a>
+        <a href="https://example.com/package.deb" class="download-link">Download DEB</a>
+    </div>
+
+    <div class="test-section">
+        <h3>⚠️ Suspicious Links Test</h3>
+        <p>These links should be blocked with security warnings:</p>
+        <a href="https://bit.ly/suspicious-link" class="suspicious-link">Bit.ly Shortened URL</a>
+        <a href="https://tinyurl.com/malicious" class="suspicious-link">TinyURL Link</a>
+        <a href="https://t.co/dangerous" class="suspicious-link">Twitter Short Link</a>
+        <a href="https://goo.gl/phishing" class="suspicious-link">Google Shortened URL</a>
+        <a href="https://is.gd/scam" class="suspicious-link">Is.gd Short Link</a>
+    </div>
+
+    <div class="test-section">
+        <h3>✅ Normal Links Test</h3>
+        <p>These links should work normally without any interference:</p>
+        <a href="https://google.com" class="normal-link">Google.com</a>
+        <a href="https://github.com" class="normal-link">GitHub.com</a>
+        <a href="https://stackoverflow.com" class="normal-link">Stack Overflow</a>
+        <a href="https://developer.mozilla.org" class="normal-link">MDN Docs</a>
+    </div>
+
+    <div class="test-section">
+        <h3>🎯 Extension Popup Test</h3>
+        <p>Click the VirusTotal extension icon in your browser toolbar to test:</p>
+        <ul>
+            <li>✅ API key should load from environment variables</li>
+            <li>🔍 File and URL scanning functionality</li>
+            <li>📊 Dashboard and statistics</li>
+            <li>⚙️ Settings and configuration</li>
+        </ul>
+    </div>
+
+    <script>
+        // Add some dynamic content to test mutation observer
+        setTimeout(() => {
+            const dynamicSection = document.createElement('div');
+            dynamicSection.className = 'test-section';
+            dynamicSection.innerHTML = `
+                <h3>🔄 Dynamic Content Test</h3>
+                <p>This content was added dynamically to test MutationObserver:</p>
+                <a href="https://example.com/dynamic.exe" class="download-link">Dynamic Download Link</a>
+                <a href="https://bit.ly/dynamic-suspicious" class="suspicious-link">Dynamic Suspicious Link</a>
+            `;
+            document.body.appendChild(dynamicSection);
+            console.log('Dynamic content added - extension should detect new links');
+        }, 2000);
+
+        // Log page load for debugging
+        console.log('VirusTotal Extension Test Page loaded');
+        console.log('Extension should initialize content script and detect links');
+    </script>
+</body>
+</html>

@@ -68,17 +68,43 @@ class AdvancedVirusTotalScanner {
       let apiKey = await this.db.get('virustotal_api_key');
       
       if (!apiKey) {
-        // Use hardcoded API key as fallback (you should replace this with your actual key)
-        apiKey = "YOUR_ACTUAL_VIRUSTOTAL_API_KEY_HERE";
-        // Save it to database for future use
-        await this.db.set('virustotal_api_key', apiKey);
+        // Load API key from secure config file generated from environment variables
+        try {
+          const response = await fetch('./extension-config.json');
+          if (!response.ok) {
+            throw new Error(`Config fetch failed: ${response.status}`);
+          }
+          
+          const config = await response.json();
+          apiKey = config.virustotalApiKey;
+          
+          if (!apiKey) {
+            throw new Error('API key not found in config');
+          }
+          
+          // Validate API key format
+          const apiKeyRegex = /^[a-f0-9]{64}$/i;
+          if (!apiKeyRegex.test(apiKey)) {
+            throw new Error('Invalid API key format');
+          }
+          
+          // Save it to database for future use
+          await this.db.set('virustotal_api_key', apiKey);
+          console.log('✅ API key loaded from secure config');
+          
+        } catch (configError) {
+          console.error('Failed to load config:', configError);
+          throw new Error('API key configuration not available. Please ensure VIRUSTOTAL_API_KEY environment variable is set.');
+        }
       }
       
       this.apiKey = apiKey;
-      console.log('API key loaded successfully');
+      console.log('✅ API key loaded successfully');
     } catch (error) {
-      console.error('Failed to load API key:', error);
-      this.apiKey = "YOUR_ACTUAL_VIRUSTOTAL_API_KEY_HERE";
+      console.error('❌ Failed to load API key:', error);
+      this.apiKey = null;
+      this.showResult('❌ API key not configured. Please set up your VirusTotal API key in environment variables.', 'error');
+      throw new Error('API key not available');
     }
   }
 
@@ -392,7 +418,7 @@ class AdvancedVirusTotalScanner {
         await this.delay(1000);
       }
 
-      this.displayBatchResults(results);
+      await this.displayBatchResults(results);
       await this.saveStats();
 
     } catch (error) {
@@ -767,7 +793,7 @@ class AdvancedVirusTotalScanner {
     };
   }
 
-  displayBatchResults(results) {
+  async displayBatchResults(results) {
     let maliciousCount = 0;
     let safeCount = 0;
     let errorCount = 0;

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download Test - VirusTotal Scanner Extension</title>
+</head>
+<body>
+    <h1>Download Test Page</h1>
+    <p>This page tests the VirusTotal Scanner extension's download protection functionality.</p>
+    
+    <h2>Test Downloads:</h2>
+    <ul>
+        <li><a href="https://example.com/test.exe" download>Download EXE file (with download attribute)</a></li>
+        <li><a href="https://example.com/document.pdf" target="_blank">Open PDF in new tab</a></li>
+        <li><a href="https://example.com/archive.zip">Download ZIP file</a></li>
+        <li><a href="https://example.com/setup.msi" target="_self">Download MSI installer</a></li>
+    </ul>
+    
+    <h2>Expected Behavior:</h2>
+    <p>When clicking download links, the extension should:</p>
+    <ul>
+        <li>✅ Show download protection prompt</li>
+        <li>✅ Preserve target attributes (new tab/window behavior)</li>
+        <li>✅ Preserve download attributes</li>
+        <li>✅ Maintain original website JavaScript handlers</li>
+    </ul>
+    
+    <script>
+        // Test that site JS handlers are preserved
+        document.addEventListener('click', (e) => {
+            if (e.target.tagName === 'A') {
+                console.log('Site JS handler triggered for:', e.target.href);
+            }
+        });
+    </script>
+</body>
+</html>
