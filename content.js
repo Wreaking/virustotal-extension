@@ -257,3 +257,229 @@
     new VirusTotalContentScript();
   }
 })();
+// content.js - Content script for page interactions
+
+// Monitor for download links and suspicious content
+(function() {
+  'use strict';
+
+  // Track download links on the page
+  function detectDownloadLinks() {
+    const downloadExtensions = [
+      '.exe', '.msi', '.dmg', '.pkg', '.deb', '.rpm', '.apk', '.ipa',
+      '.jar', '.app', '.run', '.bin', '.com', '.scr', '.bat', '.cmd', '.ps1',
+      '.zip', '.rar', '.7z', '.tar.gz', '.iso', '.img'
+    ];
+
+    const links = document.querySelectorAll('a[href]');
+    
+    links.forEach(link => {
+      const href = link.getAttribute('href');
+      if (!href) return;
+
+      // Check if it's a download link
+      const isDownloadLink = downloadExtensions.some(ext => 
+        href.toLowerCase().includes(ext.toLowerCase())
+      );
+
+      if (isDownloadLink && !link.dataset.vtScanned) {
+        link.dataset.vtScanned = 'true';
+        
+        // Add visual indicator for download links
+        link.style.position = 'relative';
+        
+        // Create small indicator
+        const indicator = document.createElement('span');
+        indicator.innerHTML = '🛡️';
+        indicator.style.cssText = `
+          position: absolute;
+          top: -5px;
+          right: -5px;
+          font-size: 12px;
+          background: rgba(76, 175, 80, 0.9);
+          border-radius: 50%;
+          padding: 2px;
+          cursor: pointer;
+          z-index: 1000;
+        `;
+        indicator.title = 'Click to scan with VirusTotal';
+        
+        // Add click handler for quick scan
+        indicator.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          // Send message to background script
+          chrome.runtime.sendMessage({
+            action: 'scanUrl',
+            url: href,
+            source: 'content_script'
+          }).then(response => {
+            if (response.success) {
+              showScanResult(response.result, indicator);
+            } else {
+              showError(response.error, indicator);
+            }
+          }).catch(error => {
+            console.error('Scan failed:', error);
+            showError('Scan failed: ' + error.message, indicator);
+          });
+        });
+        
+        link.appendChild(indicator);
+        
+        // Notify background about download link
+        chrome.runtime.sendMessage({
+          action: 'downloadLinkDetected',
+          url: href,
+          pageUrl: window.location.href
+        });
+      }
+    });
+  }
+
+  function showScanResult(result, element) {
+    const tooltip = document.createElement('div');
+    tooltip.style.cssText = `
+      position: absolute;
+      background: ${result.status === 'safe' ? '#4CAF50' : '#f44336'};
+      color: white;
+      padding: 8px 12px;
+      border-radius: 5px;
+      font-size: 12px;
+      z-index: 10000;
+      top: -40px;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    `;
+    
+    if (result.status === 'safe') {
+      tooltip.textContent = `✅ Safe (${result.harmless}/${result.total} engines)`;
+    } else {
+      tooltip.textContent = `⚠️ ${result.malicious} threats detected`;
+    }
+    
+    element.style.position = 'relative';
+    element.appendChild(tooltip);
+    
+    setTimeout(() => {
+      if (tooltip.parentNode) {
+        tooltip.parentNode.removeChild(tooltip);
+      }
+    }, 3000);
+  }
+
+  function showError(error, element) {
+    const tooltip = document.createElement('div');
+    tooltip.style.cssText = `
+      position: absolute;
+      background: #ff9800;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 5px;
+      font-size: 12px;
+      z-index: 10000;
+      top: -40px;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    `;
+    tooltip.textContent = `⚠️ ${error}`;
+    
+    element.style.position = 'relative';
+    element.appendChild(tooltip);
+    
+    setTimeout(() => {
+      if (tooltip.parentNode) {
+        tooltip.parentNode.removeChild(tooltip);
+      }
+    }, 3000);
+  }
+
+  // Monitor for clipboard changes (URLs copied)
+  function monitorClipboard() {
+    document.addEventListener('copy', () => {
+      // Note: Can't access clipboard directly from content script
+      // This would need to be handled in the popup or background
+      console.log('Copy event detected');
+    });
+  }
+
+  // Right-click context menu support
+  function handleContextMenu() {
+    document.addEventListener('contextmenu', (e) => {
+      const target = e.target;
+      
+      if (target.tagName === 'A' && target.href) {
+        // Store the right-clicked link for context menu scanning
+        chrome.runtime.sendMessage({
+          action: 'storeContextLink',
+          url: target.href
+        });
+      }
+    });
+  }
+
+  // Initialize content script
+  function init() {
+    // Initial scan
+    detectDownloadLinks();
+    
+    // Monitor for dynamically added content
+    const observer = new MutationObserver((mutations) => {
+      let shouldScan = false;
+      
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              if (node.tagName === 'A' || node.querySelector('a')) {
+                shouldScan = true;
+              }
+            }
+          });
+        }
+      });
+      
+      if (shouldScan) {
+        setTimeout(detectDownloadLinks, 1000);
+      }
+    });
+    
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+    
+    // Set up other monitors
+    monitorClipboard();
+    handleContextMenu();
+  }
+
+  // Wait for DOM to be ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  // Listen for messages from popup/background
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    switch (message.action) {
+      case 'scanCurrentPage':
+        detectDownloadLinks();
+        sendResponse({ status: 'scanned' });
+        break;
+      case 'highlightDownloads':
+        detectDownloadLinks();
+        sendResponse({ status: 'highlighted' });
+        break;
+      default:
+        sendResponse({ status: 'unknown_action' });
+    }
+    return true;
+  });
+})();

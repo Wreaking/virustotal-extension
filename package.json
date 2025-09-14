@@ -16,7 +16,8 @@
   ],
   "author": "Advanced VirusTotal Scanner",
   "license": "MIT",
-  "devDependencies": {
-    "http-server": "^14.1.1"
+  "dependencies": {
+    "http-server": "^14.1.1",
+    "@replit/database": "^2.1.5"
   }
 }

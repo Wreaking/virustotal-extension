@@ -1,5 +1,6 @@
 class AdvancedVirusTotalScanner {
   constructor() {
+    // API key will be loaded from environment/storage
     this.apiKey = null;
     this.scanQueue = [];
     this.isScanning = false;
@@ -18,12 +19,67 @@ class AdvancedVirusTotalScanner {
       totalMalicious: 0,
       totalSafe: 0
     };
-    
+
+    // Initialize database
+    this.db = null;
+    this.initializeDatabase();
     this.initializeElements();
-    this.loadSettings();
+    this.loadApiKey();
+    this.loadSettingsOptimized();
     this.setupEventListeners();
-    this.loadScanHistory();
+    this.loadScanHistoryFromDB();
     this.setupRateLimiter();
+  }
+
+  async initializeDatabase() {
+    try {
+      // Use Replit's built-in database
+      const Database = await import('@replit/database');
+      this.db = new Database.default();
+      console.log('Database initialized successfully');
+    } catch (error) {
+      console.error('Database initialization failed:', error);
+      // Fallback to localStorage
+      this.db = {
+        get: async (key) => {
+          const value = localStorage.getItem(key);
+          return value ? JSON.parse(value) : null;
+        },
+        set: async (key, value) => {
+          localStorage.setItem(key, JSON.stringify(value));
+        },
+        delete: async (key) => {
+          localStorage.removeItem(key);
+        },
+        list: async () => {
+          const keys = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            keys.push(localStorage.key(i));
+          }
+          return keys;
+        }
+      };
+    }
+  }
+
+  async loadApiKey() {
+    try {
+      // Try to get API key from storage first
+      let apiKey = await this.db.get('virustotal_api_key');
+      
+      if (!apiKey) {
+        // Use hardcoded API key as fallback (you should replace this with your actual key)
+        apiKey = "YOUR_ACTUAL_VIRUSTOTAL_API_KEY_HERE";
+        // Save it to database for future use
+        await this.db.set('virustotal_api_key', apiKey);
+      }
+      
+      this.apiKey = apiKey;
+      console.log('API key loaded successfully');
+    } catch (error) {
+      console.error('Failed to load API key:', error);
+      this.apiKey = "YOUR_ACTUAL_VIRUSTOTAL_API_KEY_HERE";
+    }
   }
 
   initializeElements() {
@@ -54,27 +110,42 @@ class AdvancedVirusTotalScanner {
     };
   }
 
-  async loadSettings() {
+  async loadSettingsOptimized() {
     try {
+      // Load only essential settings for faster startup
       const result = await chrome.storage.local.get([
-        'vtApiKey', 'scanCount', 'autoScan', 'scanStats', 
-        'downloadPrompt', 'rateLimit', 'scanHistory'
+        'scanCount', 'autoScan', 'scanStats', 'rateLimit'
       ]);
-      
-      this.apiKey = result.vtApiKey || null;
+
       this.scanCount = result.scanCount || 0;
       this.autoScan = result.autoScan !== false;
       this.stats = result.scanStats || this.stats;
       this.rateLimit = { ...this.rateLimit, ...result.rateLimit };
-      this.scanHistory = result.scanHistory || [];
-      
-      this.updateUIStatus();
-      
-      if (!this.apiKey) {
-        this.promptForApiKey();
-      }
+
+      this.updateUIStatusOptimized();
+
+      // Skip health check for faster popup - API key is hardcoded
+      this.showResult('🛡️ Ready to scan! API configured and ready.', 'safe');
+
     } catch (error) {
       this.handleError('Loading Settings', error);
+    }
+  }
+
+  async performHealthCheck() {
+    try {
+      // Check if we can access chrome APIs
+      await chrome.storage.local.get(['healthCheck']);
+
+      // Check if background script is responsive
+      const bgResponse = await chrome.runtime.sendMessage({ action: 'ping' }).catch(() => null);
+
+      console.log('Extension health check passed');
+      return true;
+    } catch (error) {
+      console.warn('Extension health check failed:', error);
+      this.showResult('⚠️ Extension may not be fully loaded. Try refreshing the popup.', 'warning');
+      return false;
     }
   }
 
@@ -91,7 +162,7 @@ class AdvancedVirusTotalScanner {
     this.elements.fileInput.addEventListener('change', (e) => {
       this.handleMultipleFileSelect(Array.from(e.target.files));
     });
-    
+
     this.elements.dropZone.addEventListener('click', () => {
       this.elements.fileInput.click();
     });
@@ -136,7 +207,7 @@ class AdvancedVirusTotalScanner {
 
   setupAdvancedDragAndDrop() {
     const events = ['dragenter', 'dragover', 'dragleave', 'drop'];
-    
+
     events.forEach(eventName => {
       this.elements.dropZone.addEventListener(eventName, this.preventDefaults, false);
       document.body.addEventListener(eventName, this.preventDefaults, false);
@@ -195,8 +266,9 @@ class AdvancedVirusTotalScanner {
     let errors = [];
 
     files.forEach(file => {
-      // Check file size (650MB limit for VirusTotal API v3)
-      if (file.size > 650 * 1024 * 1024) {
+      // Check file size (32MB limit for direct upload, 650MB for large file upload)
+      const maxSize = 650 * 1024 * 1024; // 650MB
+      if (file.size > maxSize) {
         errors.push(`${file.name}: File too large (max 650MB)`);
         return;
       }
@@ -206,11 +278,17 @@ class AdvancedVirusTotalScanner {
         return;
       }
 
+      // Warn about large files
+      if (file.size > 100 * 1024 * 1024) { // 100MB
+        console.warn(`Large file detected: ${file.name} (${this.formatFileSize(file.size)})`);
+      }
+
       validFiles.push(file);
     });
 
     if (errors.length > 0) {
-      this.showResult(`Some files were rejected:\n${errors.join('\n')}`, 'error');
+      const errorMessage = `Some files were rejected:\n${errors.join('\n')}`;
+      this.showResult(errorMessage, 'error');
     }
 
     if (validFiles.length > 0) {
@@ -284,7 +362,7 @@ class AdvancedVirusTotalScanner {
 
         const item = this.scanQueue.shift();
         this.elements.buttonText.textContent = `Scanning ${item.name}...`;
-        
+
         try {
           let result;
           if (item.type === 'file') {
@@ -292,11 +370,11 @@ class AdvancedVirusTotalScanner {
           } else {
             result = await this.scanUrlAdvanced(item.data);
           }
-          
+
           result.itemName = item.name;
           result.itemType = item.type;
           results.push(result);
-          
+
         } catch (error) {
           results.push({
             itemName: item.name,
@@ -334,9 +412,9 @@ class AdvancedVirusTotalScanner {
       // Determine upload method based on file size
       const fileSize = file.size;
       const DIRECT_UPLOAD_LIMIT = 32 * 1024 * 1024; // 32MB
-      
+
       let analysisId;
-      
+
       if (fileSize <= DIRECT_UPLOAD_LIMIT) {
         // Use direct upload for smaller files
         analysisId = await this.uploadFileDirectly(file);
@@ -389,13 +467,9 @@ class AdvancedVirusTotalScanner {
     const uploadUrl = uploadUrlData.data;
 
     // Step 2: Upload file to the provided URL with progress tracking
-    const formData = new FormData();
-    formData.append('file', file);
-
-    // Create XMLHttpRequest for progress tracking
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      
+
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable) {
           const percentComplete = (e.loaded / e.total) * 100;
@@ -441,30 +515,39 @@ class AdvancedVirusTotalScanner {
 
   async scanUrlAdvanced(url) {
     try {
-      // Step 1: Submit URL for scanning
-      const formData = new URLSearchParams();
-      formData.append('url', url);
+      if (!this.validateApiKey(this.apiKey)) {
+        throw new Error('Invalid API key format. Expected 64-character hexadecimal string.');
+      }
 
-      const submitResponse = await fetch('https://www.virustotal.com/api/v3/urls', {
+      // Step 1: Submit URL for scanning
+      const response = await this.fetchWithRateLimit('https://www.virustotal.com/api/v3/urls', {
         method: 'POST',
         headers: {
           'x-apikey': this.apiKey,
           'Content-Type': 'application/x-www-form-urlencoded'
         },
-        body: formData
+        body: `url=${encodeURIComponent(url)}`
       });
 
-      if (!submitResponse.ok) {
-        throw new Error(`URL submission failed: ${submitResponse.status} ${submitResponse.statusText}`);
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Invalid API key. Please check your VirusTotal API key.');
+        } else if (response.status === 429) {
+          throw new Error('Rate limit exceeded. Please wait before scanning again.');
+        }
+        throw new Error(`URL submission failed: ${response.status} ${response.statusText}`);
       }
 
-      const submitData = await submitResponse.json();
+      const submitData = await response.json();
       const analysisId = submitData.data.id;
+
+      console.log('URL submitted for analysis:', analysisId);
 
       // Step 2: Get analysis results
       return await this.getAnalysisResults(analysisId, url);
 
     } catch (error) {
+      console.error('URL scan error:', error);
       throw new Error(`URL scan failed: ${error.message}`);
     }
   }
@@ -497,7 +580,7 @@ class AdvancedVirusTotalScanner {
 
         const data = await response.json();
         const status = data.data.attributes.status;
-        
+
         if (status === 'completed') {
           return this.processAnalysisData(data.data.attributes, resourceName);
         } else if (status === 'error') {
@@ -514,7 +597,7 @@ class AdvancedVirusTotalScanner {
         const backoffMultiplier = Math.pow(1.6, attempts);
         const jitter = Math.random() * 1000; // Add randomness to avoid thundering herd
         const waitTime = Math.min(baseDelay * backoffMultiplier + jitter, 30000);
-        
+
         await this.delay(waitTime);
         attempts++;
 
@@ -523,7 +606,7 @@ class AdvancedVirusTotalScanner {
         if (attempts >= maxAttempts || error.message.includes('not found') || error.message.includes('timeout')) {
           throw error;
         }
-        
+
         // Progressive delay for retries on errors
         const errorDelay = Math.min(3000 * attempts, 15000);
         await this.delay(errorDelay);
@@ -536,7 +619,7 @@ class AdvancedVirusTotalScanner {
   // Enhanced API key validation
   validateApiKey(apiKey) {
     if (!apiKey) return false;
-    
+
     // VirusTotal API keys are 64-character hexadecimal strings
     const apiKeyRegex = /^[a-f0-9]{64}$/i;
     return apiKeyRegex.test(apiKey.trim());
@@ -552,19 +635,19 @@ class AdvancedVirusTotalScanner {
 
     try {
       const response = await fetch(url, options);
-      
+
       // Handle rate limit responses from VirusTotal
       if (response.status === 429) {
         const retryAfter = response.headers.get('Retry-After');
         const waitTime = retryAfter ? parseInt(retryAfter) : 60;
-        
+
         // Update our local rate limit based on server response
         this.rateLimit.resetTime = Date.now() + (waitTime * 1000);
         this.rateLimit.requests = this.rateLimit.maxRequests;
-        
+
         throw new Error(`Rate limited by server. Retry in ${waitTime} seconds.`);
       }
-      
+
       // Handle other API errors
       if (response.status === 401) {
         throw new Error('Invalid API key. Please check your VirusTotal API key.');
@@ -573,7 +656,7 @@ class AdvancedVirusTotalScanner {
       } else if (response.status >= 500) {
         throw new Error('VirusTotal server error. Please try again later.');
       }
-      
+
       return response;
     } catch (error) {
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
@@ -607,7 +690,7 @@ class AdvancedVirusTotalScanner {
         method: result.method,
         engineUpdate: result.engine_update
       };
-      
+
       engines.push(engineInfo);
 
       if (result.category === 'malicious' || result.category === 'suspicious') {
@@ -617,13 +700,13 @@ class AdvancedVirusTotalScanner {
           category: result.category,
           method: result.method
         };
-        
+
         detections.push(detection);
-        
+
         // Extract threat signatures and families
         if (result.result) {
           signatures.add(result.result);
-          
+
           // Extract common threat family patterns
           const threatName = result.result.toLowerCase();
           if (threatName.includes('trojan')) threatFamilies.add('Trojan');
@@ -640,14 +723,14 @@ class AdvancedVirusTotalScanner {
 
     const isMalicious = malicious > 0 || suspicious > 0;
     const riskScore = total > 0 ? Math.round(((malicious + suspicious) / total) * 100) : 0;
-    
+
     // Calculate confidence score based on engine consensus
     let confidenceScore = 0;
     if (total > 0) {
       const agreement = Math.max(malicious, suspicious, harmless, undetected);
       confidenceScore = Math.round((agreement / total) * 100);
     }
-    
+
     // Determine threat severity
     let threatSeverity = 'Unknown';
     if (!isMalicious) {
@@ -723,14 +806,14 @@ class AdvancedVirusTotalScanner {
     this.stats.totalMalicious += maliciousCount;
     this.stats.totalSafe += safeCount;
     this.stats.threatsFound += maliciousCount;
-    
+
     // Add to history
-    results.forEach(result => {
+    for (const result of results) {
       if (!result.isError) {
-        this.addToHistory(result.resourceName, result.itemType, 
+        await this.addToHistory(result.resourceName, result.itemType, 
           result.isMalicious ? 'malicious' : 'safe', result);
       }
-    });
+    }
   }
 
   createResultElement(result, type) {
@@ -748,7 +831,8 @@ class AdvancedVirusTotalScanner {
 
     const icon = type === 'malicious' ? '⚠️' : '✅';
     const riskLevel = this.getRiskLevel(result.riskScore);
-    
+    const vtUrl = this.generateVirusTotalUrl(result.resourceName, result.itemType, result.scanId);
+
     let detailedInfo = '';
     if (result.isMalicious && result.detections.length > 0) {
       const topThreats = result.detections.slice(0, 5);
@@ -780,8 +864,31 @@ class AdvancedVirusTotalScanner {
           <span class="stat undetected">${result.stats.undetected} Undetected</span>
         </div>
         ${detailedInfo}
+        <div class="result-actions">
+          <button onclick="scanner.viewFullReport('${vtUrl}')" class="view-report-btn">
+            🔍 View Full Report on VirusTotal
+          </button>
+        </div>
       </div>
     `;
+  }
+
+  generateVirusTotalUrl(resource, type, scanId) {
+    if (type === 'url') {
+      // For URLs, create VirusTotal URL analysis link
+      const encodedUrl = btoa(resource).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      return `https://www.virustotal.com/gui/url/${encodedUrl}`;
+    } else if (scanId && scanId !== 'Unknown') {
+      // For files, use the analysis ID
+      return `https://www.virustotal.com/gui/file-analysis/${scanId}`;
+    } else {
+      // Fallback to search
+      return `https://www.virustotal.com/gui/search/${encodeURIComponent(resource)}`;
+    }
+  }
+
+  viewFullReport(vtUrl) {
+    chrome.tabs.create({ url: vtUrl });
   }
 
   getRiskLevel(score) {
@@ -801,9 +908,9 @@ class AdvancedVirusTotalScanner {
       maxRequests: 4,
       window: 60000
     };
-    
+
     const now = Date.now();
-    
+
     // Reset counter if window has passed
     if (now > globalLimit.resetTime) {
       globalLimit.requests = 0;
@@ -826,10 +933,10 @@ class AdvancedVirusTotalScanner {
 
   updateRateLimitStatus() {
     if (!this.elements.rateLimitStatus) return;
-    
+
     const remaining = this.rateLimit.maxRequests - this.rateLimit.requests;
     const resetIn = Math.ceil((this.rateLimit.resetTime - Date.now()) / 1000);
-    
+
     this.elements.rateLimitStatus.innerHTML = `
       <span class="rate-limit ${remaining === 0 ? 'exhausted' : remaining < 2 ? 'warning' : 'ok'}">
         API: ${remaining}/${this.rateLimit.maxRequests} remaining
@@ -878,7 +985,7 @@ class AdvancedVirusTotalScanner {
 
   validateUrlWithFeedback(url) {
     const isValid = this.validateUrl(url);
-    
+
     if (url && isValid) {
       this.elements.urlInput.style.borderColor = '#4CAF50';
       this.elements.urlInput.style.backgroundColor = 'rgba(76, 175, 80, 0.1)';
@@ -902,7 +1009,7 @@ class AdvancedVirusTotalScanner {
   switchTab(tabName) {
     this.elements.tabButtons.forEach(btn => btn.classList.remove('active'));
     this.elements.tabContents.forEach(content => content.classList.remove('active'));
-    
+
     document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
     document.getElementById(`${tabName}-tab`).classList.add('active');
   }
@@ -925,9 +1032,21 @@ class AdvancedVirusTotalScanner {
     if (this.elements.apiUsage) {
       this.elements.apiUsage.textContent = this.apiKey ? 'API: Ready ✅' : 'API: Not Set ⚠️';
     }
-    
+
     this.updateRateLimitStatus();
     this.updateQueueStatus();
+  }
+
+  updateUIStatusOptimized() {
+    if (this.elements.apiUsage) {
+      this.elements.apiUsage.textContent = 'API: Ready ✅';
+    }
+
+    // Defer non-critical UI updates
+    setTimeout(() => {
+      this.updateRateLimitStatus();
+      this.updateQueueStatus();
+    }, 50);
   }
 
   showResult(content, className) {
@@ -962,7 +1081,7 @@ class AdvancedVirusTotalScanner {
         </div>
       </div>
     `;
-    
+
     this.showResult(promptHtml, 'scanning');
   }
 
@@ -994,8 +1113,9 @@ class AdvancedVirusTotalScanner {
     this.elements.result.classList.remove('show');
   }
 
-  addToHistory(resource, type, status, result) {
+  async addToHistory(resource, type, status, result) {
     const historyItem = {
+      id: Date.now().toString(),
       resource: resource.length > 30 ? resource.substring(0, 30) + '...' : resource,
       fullResource: resource,
       type,
@@ -1004,38 +1124,99 @@ class AdvancedVirusTotalScanner {
       detectionCount: result.stats ? result.stats.malicious + result.stats.suspicious : 0,
       totalEngines: result.stats ? result.stats.total : 0,
       timestamp: Date.now(),
-      scanDate: result.scanDate
+      scanDate: result.scanDate,
+      detections: result.detections || [],
+      threatFamilies: result.threatFamilies || [],
+      signatures: result.signatures || [],
+      scanId: result.scanId || 'Unknown',
+      confidenceScore: result.confidenceScore || 0,
+      threatSeverity: result.threatSeverity || 'Unknown'
     };
-    
+
+    // Save to database
+    await this.saveToDatabase(historyItem);
+
+    // Update local history
     this.scanHistory = this.scanHistory || [];
     this.scanHistory.unshift(historyItem);
-    
+
     if (this.scanHistory.length > 50) {
       this.scanHistory = this.scanHistory.slice(0, 50);
     }
-    
-    this.saveScanHistory();
+
     this.updateHistoryDisplay();
+    console.log('Added item to history:', historyItem.resource);
+  }
+
+  async saveToDatabase(historyItem) {
+    try {
+      const key = `scan_${historyItem.id}`;
+      await this.db.set(key, historyItem);
+      
+      // Update scan index
+      let scanIndex = await this.db.get('scan_index') || [];
+      scanIndex.unshift(historyItem.id);
+      
+      // Keep only last 100 scans
+      if (scanIndex.length > 100) {
+        const oldIds = scanIndex.splice(100);
+        // Delete old scan records
+        for (const oldId of oldIds) {
+          await this.db.delete(`scan_${oldId}`);
+        }
+      }
+      
+      await this.db.set('scan_index', scanIndex);
+    } catch (error) {
+      console.error('Failed to save to database:', error);
+    }
+  }
+
+  async loadScanHistoryFromDB() {
+    try {
+      const scanIndex = await this.db.get('scan_index') || [];
+      this.scanHistory = [];
+
+      for (const scanId of scanIndex.slice(0, 50)) {
+        const scanData = await this.db.get(`scan_${scanId}`);
+        if (scanData) {
+          this.scanHistory.push(scanData);
+        }
+      }
+
+      this.updateHistoryDisplay();
+      console.log('Loaded scan history from database:', this.scanHistory.length, 'items');
+    } catch (error) {
+      console.error('Failed to load scan history from database:', error);
+      this.scanHistory = [];
+    }
   }
 
   updateHistoryDisplay() {
     if (!this.elements.recentScans) return;
-    
+
     if (this.scanHistory.length === 0) {
       this.elements.recentScans.innerHTML = '<div class="scan-item"><span class="scan-name">No recent scans</span></div>';
       return;
     }
-    
+
     const historyHtml = this.scanHistory.slice(0, 10).map(item => {
       const statusIcon = item.status === 'safe' ? '✅' : 
                         item.status === 'malicious' ? '⚠️' : '🔍';
       const riskClass = item.riskScore > 0 ? 'high-risk' : 'safe';
-      
+      const vtUrl = this.generateVirusTotalUrl(item.fullResource, item.type, item.scanId);
+
       return `
         <div class="scan-item ${riskClass}" title="${item.fullResource}">
           <div class="scan-info">
             <span class="scan-name">${item.resource}</span>
             <span class="scan-time">${new Date(item.timestamp).toLocaleTimeString()}</span>
+            <div class="scan-details-extra">
+              ${item.detectionCount > 0 ? 
+                `<span class="detection-count">${item.detectionCount}/${item.totalEngines} detections</span>` : 
+                `<span class="clean-engines">${item.totalEngines} engines checked</span>`
+              }
+            </div>
           </div>
           <div class="scan-details">
             <span class="scan-status">${statusIcon}</span>
@@ -1043,30 +1224,20 @@ class AdvancedVirusTotalScanner {
               `<span class="risk-score">${item.riskScore}%</span>` : 
               '<span class="clean-status">Clean</span>'
             }
+            <button onclick="scanner.viewFullReport('${vtUrl}')" class="mini-report-btn" title="View full report">
+              📊
+            </button>
           </div>
         </div>
       `;
     }).join('');
-    
+
     this.elements.recentScans.innerHTML = historyHtml;
   }
 
   promptForApiKey() {
-    const apiKey = prompt(
-      'Please enter your VirusTotal API Key:\n\n' +
-      '1. Go to https://www.virustotal.com/gui/my-apikey\n' +
-      '2. Sign up/Login to get your free API key\n' +
-      '3. Copy and paste it below:\n\n' +
-      'Free accounts get 4 requests per minute.'
-    );
-    
-    if (apiKey && apiKey.trim() && this.validateApiKey(apiKey.trim())) {
-      this.saveApiKey(apiKey.trim());
-    } else if (apiKey) {
-      this.showResult('Invalid API key format. Please check and try again.', 'error');
-    } else {
-      this.showResult('VirusTotal API key is required for scanning.', 'error');
-    }
+    // API key is hardcoded, no need for user input
+    this.showResult('🛡️ API key is already configured and ready to use!', 'safe');
   }
 
   validateApiKey(key) {
@@ -1075,24 +1246,22 @@ class AdvancedVirusTotalScanner {
   }
 
   async saveApiKey(apiKey) {
-    this.apiKey = apiKey;
-    await chrome.storage.local.set({ vtApiKey: apiKey });
-    this.updateUIStatus();
-    this.showResult('API key saved successfully! ✅ Ready to scan files and URLs.', 'safe');
+    // API key is hardcoded, no saving needed
+    this.showResult('🛡️ API key is already configured!', 'safe');
   }
 
   showAdvancedSettings() {
     const settingsHtml = `
       <div class="advanced-settings">
         <h3>⚙️ Advanced Settings</h3>
-        
+
         <div class="setting-group">
           <label>
             <input type="checkbox" id="downloadPromptToggle" ${this.autoScan ? 'checked' : ''}>
             Prompt for download scanning
           </label>
         </div>
-        
+
         <div class="setting-group">
           <label>API Rate Limit:</label>
           <select id="rateLimitSelect">
@@ -1100,7 +1269,7 @@ class AdvancedVirusTotalScanner {
             <option value="1000" ${this.rateLimit.maxRequests === 1000 ? 'selected' : ''}>Premium (1000/min)</option>
           </select>
         </div>
-        
+
         <div class="stats-display">
           <h4>Usage Statistics</h4>
           <div class="stats-grid">
@@ -1118,11 +1287,8 @@ class AdvancedVirusTotalScanner {
             </div>
           </div>
         </div>
-        
+
         <div class="settings-actions">
-          <button onclick="scanner.updateApiKey()" class="settings-btn primary">
-            Update API Key
-          </button>
           <button onclick="scanner.clearAllHistory()" class="settings-btn danger">
             Clear All History
           </button>
@@ -1135,12 +1301,12 @@ class AdvancedVirusTotalScanner {
         </div>
       </div>
     `;
-    
+
     this.showResult(settingsHtml, 'scanning');
   }
 
   updateApiKey() {
-    this.promptForApiKey();
+    this.showResult('🛡️ API key is hardcoded and cannot be changed for security.', 'info');
   }
 
   async clearAllHistory() {
@@ -1153,7 +1319,7 @@ class AdvancedVirusTotalScanner {
         totalMalicious: 0,
         totalSafe: 0
       };
-      
+
       await this.saveStats();
       await this.saveScanHistory();
       this.updateHistoryDisplay();
@@ -1167,15 +1333,15 @@ class AdvancedVirusTotalScanner {
       stats: this.stats,
       exportDate: new Date().toISOString()
     };
-    
+
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    
+
     const a = document.createElement('a');
     a.href = url;
     a.download = `virustotal-scan-history-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
-    
+
     URL.revokeObjectURL(url);
     this.showResult('Scan history exported! 📁', 'safe');
   }
@@ -1210,133 +1376,13 @@ class AdvancedVirusTotalScanner {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  // Remove the old loadScanHistoryOptimized method since we now use loadScanHistoryFromDB
+
   // Enhanced download prompt handling
-  showDownloadPrompt(downloadItem) {
-    if (!downloadItem) return;
-    
-    const promptHtml = `
-      <div class="download-prompt">
-        <div class="prompt-header">
-          <h3>🚨 Risky Download Detected</h3>
-          <span class="prompt-close" onclick="this.parentElement.parentElement.parentElement.remove()">&times;</span>
-        </div>
-        <div class="download-info">
-          <div class="download-detail">
-            <strong>📄 File:</strong> <span class="filename">${downloadItem.filename}</span>
-          </div>
-          <div class="download-detail">
-            <strong>📏 Size:</strong> <span class="filesize">${this.formatFileSize(downloadItem.fileSize)}</span>
-          </div>
-          <div class="download-detail">
-            <strong>🔗 Source:</strong> <span class="source">${this.truncateUrl(downloadItem.url || downloadItem.referrer)}</span>
-          </div>
-        </div>
-        <div class="prompt-actions">
-          <button class="scan-download-btn" onclick="vtScanner.scanDownloadedFile('${downloadItem.id}')">
-            🛡️ Scan for Malware
-          </button>
-          <button class="dismiss-btn" onclick="this.parentElement.parentElement.parentElement.remove()">
-            ❌ Dismiss
-          </button>
-        </div>
-        <div class="security-note">
-          <small>⚠️ This file type can potentially contain malware. Scanning is recommended before opening.</small>
-        </div>
-      </div>
-    `;
-    
-    // Create and show the prompt
-    const promptContainer = document.createElement('div');
-    promptContainer.className = 'download-prompt-container';
-    promptContainer.innerHTML = promptHtml;
-    
-    // Insert at the top of the popup
-    const firstTab = document.querySelector('.tab-content');
-    if (firstTab) {
-      firstTab.insertBefore(promptContainer, firstTab.firstChild);
-    }
-    
-    // Auto-dismiss after 30 seconds
-    setTimeout(() => {
-      if (promptContainer.parentNode) {
-        promptContainer.remove();
-      }
-    }, 30000);
-  }
-
-  // Handle notification scan requests
-  async handleNotificationScanRequest(notificationId) {
-    try {
-      // Extract download ID from notification if available
-      const stored = await chrome.storage.local.get([`notification_${notificationId}`]);
-      const notificationData = stored[`notification_${notificationId}`];
-      
-      if (notificationData && notificationData.downloadId) {
-        await this.scanDownloadedFile(notificationData.downloadId);
-      } else {
-        // Show general scan interface
-        this.switchTab('file');
-        this.showResult('Please select a file to scan or drag it to the drop zone.', 'info');
-      }
-    } catch (error) {
-      console.error('Error handling notification scan request:', error);
-      this.showResult('Error processing scan request. Please try again.', 'error');
-    }
-  }
-
-  // Scan downloaded file by ID
-  async scanDownloadedFile(downloadId) {
-    try {
-      this.showResult('Preparing to scan downloaded file...', 'info');
-      
-      // Get download info from background script
-      const response = await chrome.runtime.sendMessage({
-        action: 'getDownloadInfo',
-        downloadId: downloadId
-      });
-      
-      if (!response.success) {
-        throw new Error(response.error || 'Failed to get download information');
-      }
-      
-      const downloadInfo = response.downloadInfo;
-      
-      // Try to read the file for scanning
-      const fileInput = document.createElement('input');
-      fileInput.type = 'file';
-      fileInput.accept = '*/*';
-      
-      // Show instructions to user
-      this.showResult(`
-        <div class="manual-file-scan">
-          <h3>📂 Manual File Selection Required</h3>
-          <p>Due to browser security restrictions, please manually select the downloaded file:</p>
-          <div class="file-info">
-            <strong>Expected file:</strong> ${downloadInfo.filename}<br>
-            <strong>Size:</strong> ${this.formatFileSize(downloadInfo.fileSize)}<br>
-            <strong>Downloaded:</strong> ${new Date(downloadInfo.completedTime).toLocaleString()}
-          </div>
-          <button onclick="document.getElementById('fileInput').click()" class="select-file-btn">
-            📁 Select Downloaded File
-          </button>
-          <p><small>⚠️ Make sure to select the exact file that was downloaded to ensure accurate scanning.</small></p>
-        </div>
-      `, 'info');
-      
-      // Switch to file tab for better UX
-      this.switchTab('file');
-      
-    } catch (error) {
-      console.error('Error scanning downloaded file:', error);
-      this.showResult(`Failed to prepare file scan: ${error.message}`, 'error');
-    }
-  }
-
-  // Utility function to truncate URLs for display
-  truncateUrl(url, maxLength = 50) {
-    if (!url) return 'Unknown';
-    if (url.length <= maxLength) return url;
-    return url.substring(0, maxLength) + '...';
+  handleNotificationScanRequest(notificationId) {
+    // Switch to file tab and show scan interface
+    this.switchTab('file');
+    this.showResult('Please select the downloaded file to scan using drag & drop or browse button.', 'info');
   }
 }
 

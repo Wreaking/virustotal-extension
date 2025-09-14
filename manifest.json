@@ -10,7 +10,9 @@
     "storage",
     "notifications",
     "contextMenus",
-    "alarms"
+    "alarms",
+    "tabs",
+    "webRequest"
   ],
   "host_permissions": [
     "https://www.virustotal.com/*",

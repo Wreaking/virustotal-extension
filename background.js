@@ -1,3 +1,4 @@
+
 // background.js - Service Worker for MV3
 
 // Global variables
@@ -12,6 +13,19 @@ chrome.runtime.onInstalled.addListener(() => {
     id: 'scanLink',
     title: 'Scan with VirusTotal',
     contexts: ['link']
+  });
+
+  // Set default settings
+  chrome.storage.local.set({
+    downloadPrompt: true,
+    autoScan: false,
+    scanStats: {
+      todayScans: 0,
+      threatsFound: 0,
+      lastScanDate: new Date().toDateString(),
+      totalMalicious: 0,
+      totalSafe: 0
+    }
   });
 });
 
@@ -75,6 +89,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: false, error: 'File data required' });
         break;
         
+      case 'ping':
+        sendResponse({ success: true, message: 'Background script is responsive' });
+        break;
+        
       default:
         sendResponse({ success: false, error: 'Unknown action' });
     }
@@ -84,25 +102,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-// Handle download monitoring with user prompts
+// Enhanced download monitoring with user prompts
 chrome.downloads.onCreated.addListener(async (downloadItem) => {
   console.log('Download detected:', downloadItem);
   
-  // Check if download prompt is enabled
-  const settings = await chrome.storage.local.get(['downloadPrompt', 'autoScan']);
-  const shouldPrompt = settings.downloadPrompt !== false;
-  
-  if (shouldPrompt) {
-    await handleDownloadCreated(downloadItem);
+  try {
+    // Check if download prompt is enabled
+    const settings = await chrome.storage.local.get(['downloadPrompt']);
+    const shouldPrompt = settings.downloadPrompt !== false;
+    
+    if (shouldPrompt) {
+      await handleDownloadCreated(downloadItem);
+    }
+  } catch (error) {
+    console.error('Error handling download creation:', error);
   }
 });
 
 // Listen for download completion to offer scanning
 chrome.downloads.onChanged.addListener(async (delta) => {
   if (delta.state && delta.state.current === 'complete') {
-    const [downloadItem] = await chrome.downloads.search({ id: delta.id });
-    if (downloadItem) {
-      await promptForDownloadScan(downloadItem);
+    try {
+      const [downloadItem] = await chrome.downloads.search({ id: delta.id });
+      if (downloadItem) {
+        await promptForDownloadScan(downloadItem);
+      }
+    } catch (error) {
+      console.error('Error handling download completion:', error);
     }
   }
 });
@@ -116,7 +142,7 @@ async function handleScanUrl(url, source) {
   }
   
   try {
-    const result = await scanURL(url);
+    const result = await scanURL(url, source);
     
     // Show notification with result
     showScanNotification(url, result, source);
@@ -137,12 +163,21 @@ async function scanURL(url, source = 'unknown') {
       throw new Error('Invalid URL provided');
     }
 
-    // Get API key and check rate limits
-    const storageResult = await chrome.storage.local.get(['vtApiKey', 'globalRateLimit']);
-    const apiKey = storageResult.vtApiKey;
+    // Load API key from storage or use hardcoded fallback
+    let apiKey = "YOUR_ACTUAL_VIRUSTOTAL_API_KEY_HERE";
+    
+    try {
+      // Try to get API key from storage (set by popup script)
+      const stored = await chrome.storage.local.get(['virustotal_api_key']);
+      if (stored.virustotal_api_key) {
+        apiKey = stored.virustotal_api_key;
+      }
+    } catch (error) {
+      console.warn('Failed to load API key from storage:', error);
+    }
     
     if (!apiKey || apiKey.trim() === '') {
-      throw new Error('VirusTotal API key not configured. Please set it in the extension popup.');
+      throw new Error('VirusTotal API key not available.');
     }
 
     // Enhanced API key validation
@@ -268,9 +303,20 @@ async function getAnalysisResultsBackground(analysisId) {
   
   while (attempts < maxAttempts) {
     try {
+      // Get API key from storage
+      let apiKey = "YOUR_ACTUAL_VIRUSTOTAL_API_KEY_HERE";
+      try {
+        const stored = await chrome.storage.local.get(['virustotal_api_key']);
+        if (stored.virustotal_api_key) {
+          apiKey = stored.virustotal_api_key;
+        }
+      } catch (error) {
+        console.warn('Failed to load API key:', error);
+      }
+
       const response = await fetchWithBackgroundRateLimit(`https://www.virustotal.com/api/v3/analyses/${analysisId}`, {
         headers: {
-          'x-apikey': (await chrome.storage.local.get(['vtApiKey'])).vtApiKey
+          'x-apikey': apiKey
         }
       });
 
@@ -351,7 +397,11 @@ function handleDownloadLinkDetected(downloadUrl, pageUrl) {
     type: 'basic',
     iconUrl: 'images/icon48.png',
     title: 'Download Link Detected',
-    message: `Found download link: ${downloadUrl.substring(0, 50)}...`
+    message: `Found download link: ${downloadUrl.substring(0, 50)}...`,
+    buttons: [
+      { title: 'Open Scanner' },
+      { title: 'Dismiss' }
+    ]
   });
 }
 
@@ -359,7 +409,8 @@ async function handleDownloadCreated(downloadItem) {
   try {
     // Only prompt for potentially risky file types
     const riskyExtensions = ['.exe', '.msi', '.dmg', '.pkg', '.deb', '.rpm', '.apk', '.ipa', 
-                            '.jar', '.app', '.run', '.bin', '.com', '.scr', '.bat', '.cmd', '.ps1'];
+                            '.jar', '.app', '.run', '.bin', '.com', '.scr', '.bat', '.cmd', '.ps1', 
+                            '.zip', '.rar', '.7z', '.tar.gz'];
     
     const filename = downloadItem.filename || '';
     const isRisky = riskyExtensions.some(ext => filename.toLowerCase().endsWith(ext));
@@ -367,6 +418,18 @@ async function handleDownloadCreated(downloadItem) {
     
     if (isRisky || isLarge) {
       console.log('Risky download detected:', filename);
+      
+      // Store download info for later scanning
+      await chrome.storage.local.set({
+        [`pendingDownload_${downloadItem.id}`]: {
+          id: downloadItem.id,
+          filename: downloadItem.filename,
+          fileSize: downloadItem.fileSize,
+          url: downloadItem.finalUrl || downloadItem.url,
+          referrer: downloadItem.referrer,
+          startTime: downloadItem.startTime
+        }
+      });
       
       // Try to send message to popup if open
       try {
@@ -393,13 +456,15 @@ async function handleDownloadCreated(downloadItem) {
 
 // Show notification when risky download is detected
 async function showDownloadDetectionNotification(downloadItem) {
-  await chrome.notifications.create({
+  const notificationId = `download_${downloadItem.id}`;
+  
+  await chrome.notifications.create(notificationId, {
     type: 'basic',
     iconUrl: 'images/icon48.png',
     title: '⚠️ Risky Download Detected',
-    message: `File: ${downloadItem.filename}\nSize: ${formatFileSize(downloadItem.fileSize || 0)}\nClick to open scanner`,
+    message: `File: ${downloadItem.filename}\nSize: ${formatFileSize(downloadItem.fileSize || 0)}\nClick to scan with VirusTotal`,
     buttons: [
-      { title: '🛡️ Open Scanner' },
+      { title: '🛡️ Scan Now' },
       { title: '❌ Dismiss' }
     ],
     requireInteraction: true
@@ -408,32 +473,38 @@ async function showDownloadDetectionNotification(downloadItem) {
 
 // Prompt user when download completes
 async function promptForDownloadScan(downloadItem) {
-  const settings = await chrome.storage.local.get(['downloadPrompt']);
-  if (settings.downloadPrompt === false) return;
+  try {
+    const settings = await chrome.storage.local.get(['downloadPrompt']);
+    if (settings.downloadPrompt === false) return;
 
-  const notification = await chrome.notifications.create({
-    type: 'basic',
-    iconUrl: 'images/icon48.png',
-    title: '🔽 Download Complete - Scan for Malware?',
-    message: `${downloadItem.filename}\nSize: ${formatFileSize(downloadItem.fileSize || 0)}\nRecommended: Scan before opening`,
-    buttons: [
-      { title: '🛡️ Scan Now' },
-      { title: '❌ Skip Scan' }
-    ],
-    requireInteraction: true
-  });
+    const notificationId = `complete_${downloadItem.id}`;
+    
+    await chrome.notifications.create(notificationId, {
+      type: 'basic',
+      iconUrl: 'images/icon48.png',
+      title: '🔽 Download Complete - Scan for Malware?',
+      message: `${downloadItem.filename}\nSize: ${formatFileSize(downloadItem.fileSize || 0)}\nRecommended: Scan before opening`,
+      buttons: [
+        { title: '🛡️ Scan Now' },
+        { title: '❌ Skip Scan' }
+      ],
+      requireInteraction: true
+    });
 
-  // Store download info for later scanning
-  await chrome.storage.local.set({
-    [`pendingDownload_${downloadItem.id}`]: {
-      id: downloadItem.id,
-      filename: downloadItem.filename,
-      fileSize: downloadItem.fileSize,
-      fullPath: downloadItem.filename,
-      url: downloadItem.finalUrl || downloadItem.url,
-      completedTime: Date.now()
-    }
-  });
+    // Store download info for later scanning
+    await chrome.storage.local.set({
+      [`completedDownload_${downloadItem.id}`]: {
+        id: downloadItem.id,
+        filename: downloadItem.filename,
+        fileSize: downloadItem.fileSize,
+        fullPath: downloadItem.filename,
+        url: downloadItem.finalUrl || downloadItem.url,
+        completedTime: Date.now()
+      }
+    });
+  } catch (error) {
+    console.error('Error prompting for download scan:', error);
+  }
 }
 
 // Format file size helper function
@@ -448,8 +519,12 @@ function formatFileSize(bytes) {
 // Get stored download info for scanning
 async function getStoredDownloadInfo(downloadId) {
   try {
-    const result = await chrome.storage.local.get([`pendingDownload_${downloadId}`]);
-    const downloadInfo = result[`pendingDownload_${downloadId}`];
+    const result = await chrome.storage.local.get([
+      `pendingDownload_${downloadId}`,
+      `completedDownload_${downloadId}`
+    ]);
+    
+    const downloadInfo = result[`pendingDownload_${downloadId}`] || result[`completedDownload_${downloadId}`];
     
     if (!downloadInfo) {
       throw new Error('Download information not found');
@@ -490,7 +565,8 @@ chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIn
         [`notification_${notificationId}`]: {
           timestamp: Date.now(),
           action: 'scan_request',
-          source: 'notification'
+          source: 'notification',
+          downloadId: notificationId.includes('download_') ? notificationId.split('_')[1] : null
         }
       });
       
@@ -538,7 +614,7 @@ function showScanNotification(url, result, source) {
   const isUnsafe = result.status === 'unsafe';
   const title = isUnsafe ? '⚠️ Threat Detected' : '✅ Safe';
   const message = isUnsafe 
-    ? `${result.malicious}/${result.total} engines detected threats`
+    ? `${result.malicious}/${result.total} engines detected threats\nRisk Score: ${result.riskScore}%`
     : `No threats found (${result.total} engines checked)`;
 
   chrome.notifications.create({
@@ -572,7 +648,7 @@ self.addEventListener('unhandledrejection', event => {
       type: 'basic',
       iconUrl: 'images/icon48.png',
       title: 'VirusTotal Scanner Error',
-      message: 'An unexpected error occurred. Check console for details.'
+      message: 'An unexpected error occurred. Check extension popup for details.'
     });
   }
 });
@@ -581,14 +657,12 @@ self.addEventListener('unhandledrejection', event => {
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
     console.log('VirusTotal Scanner installed successfully');
-    // Set default settings
-    chrome.storage.local.set({
-      autoScanDownloads: false,
-      scanStats: {
-        todayScans: 0,
-        threatsFound: 0,
-        lastScanDate: new Date().toDateString()
-      }
+    // Show welcome notification
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'images/icon48.png',
+      title: '🛡️ VirusTotal Scanner Ready',
+      message: 'Click the extension icon to get started. You\'ll need a free API key from VirusTotal.'
     });
   } else if (details.reason === 'update') {
     console.log('VirusTotal Scanner updated to version', chrome.runtime.getManifest().version);
