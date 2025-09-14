@@ -301,28 +301,378 @@
       padding: 8px 0;
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
       font-size: 12px;
+      transition: all 0.3s ease;
     }
 
     .scan-item:last-child {
       border-bottom: none;
     }
 
+    .scan-item:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 5px;
+    }
+
+    .scan-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
     .scan-name {
       color: rgba(255, 255, 255, 0.8);
-      flex: 1;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      margin-right: 10px;
+      font-weight: 500;
+    }
+
+    .scan-time {
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 10px;
+      margin-top: 2px;
+    }
+
+    .scan-details {
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
     .scan-status {
       font-weight: 600;
     }
 
+    .risk-score {
+      background: rgba(255, 87, 34, 0.2);
+      color: #ff5722;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: bold;
+    }
+
+    .clean-status {
+      color: #4CAF50;
+      font-size: 10px;
+    }
+
     .scan-status.safe { color: #4CAF50; }
     .scan-status.unsafe { color: #f44336; }
+    .scan-status.malicious { color: #f44336; }
     .scan-status.scanning { color: #FFC107; }
+
+    /* Advanced UI Styles */
+    .queue-status {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 8px 12px;
+      border-radius: 20px;
+      text-align: center;
+      margin-bottom: 10px;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    .queue-count {
+      color: #FFC107;
+      font-weight: 600;
+    }
+
+    .rate-limit {
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 12px;
+      margin-left: 8px;
+    }
+
+    .rate-limit.ok {
+      background: rgba(76, 175, 80, 0.2);
+      color: #4CAF50;
+    }
+
+    .rate-limit.warning {
+      background: rgba(255, 193, 7, 0.2);
+      color: #FFC107;
+    }
+
+    .rate-limit.exhausted {
+      background: rgba(244, 67, 54, 0.2);
+      color: #f44336;
+    }
+
+    .batch-summary {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+
+    .summary-stats {
+      display: flex;
+      justify-content: space-around;
+      margin-top: 10px;
+    }
+
+    .summary-stats .stat {
+      padding: 8px 12px;
+      border-radius: 15px;
+      font-weight: 600;
+      font-size: 12px;
+    }
+
+    .summary-stats .stat.safe {
+      background: rgba(76, 175, 80, 0.2);
+      color: #4CAF50;
+    }
+
+    .summary-stats .stat.malicious {
+      background: rgba(244, 67, 54, 0.2);
+      color: #f44336;
+    }
+
+    .summary-stats .stat.error {
+      background: rgba(156, 39, 176, 0.2);
+      color: #9c27b0;
+    }
+
+    .results-container {
+      max-height: 300px;
+      overflow-y: auto;
+      margin-top: 15px;
+    }
+
+    .result-item {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 8px;
+      border-left: 4px solid transparent;
+    }
+
+    .result-item.safe {
+      border-left-color: #4CAF50;
+    }
+
+    .result-item.malicious {
+      border-left-color: #f44336;
+    }
+
+    .result-item.error {
+      border-left-color: #9c27b0;
+    }
+
+    .result-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .result-icon {
+      font-size: 18px;
+      margin-right: 8px;
+    }
+
+    .result-name {
+      flex: 1;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.9);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .result-stats {
+      display: flex;
+      gap: 8px;
+      font-size: 11px;
+      margin-bottom: 8px;
+    }
+
+    .result-stats .stat {
+      padding: 3px 6px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .result-stats .stat.malicious {
+      background: rgba(244, 67, 54, 0.3);
+      color: #ffcdd2;
+    }
+
+    .result-stats .stat.suspicious {
+      background: rgba(255, 152, 0, 0.3);
+      color: #ffe0b2;
+    }
+
+    .result-stats .stat.harmless {
+      background: rgba(76, 175, 80, 0.3);
+      color: #c8e6c9;
+    }
+
+    .threat-details {
+      margin-top: 8px;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    .threat-item {
+      margin: 4px 0;
+      padding: 4px 8px;
+      background: rgba(244, 67, 54, 0.1);
+      border-radius: 5px;
+    }
+
+    .engine-name {
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    .threat-name {
+      color: #f44336;
+    }
+
+    .more-threats {
+      font-style: italic;
+      color: rgba(255, 255, 255, 0.5);
+      margin-top: 4px;
+    }
+
+    .download-prompt {
+      text-align: center;
+      padding: 20px;
+    }
+
+    .prompt-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 15px;
+    }
+
+    .scan-btn, .dismiss-btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 20px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .scan-btn {
+      background: #4CAF50;
+      color: white;
+    }
+
+    .scan-btn:hover {
+      background: #45a049;
+      transform: translateY(-1px);
+    }
+
+    .dismiss-btn {
+      background: rgba(255, 255, 255, 0.2);
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    .dismiss-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .advanced-settings {
+      padding: 20px;
+      text-align: center;
+    }
+
+    .setting-group {
+      margin: 15px 0;
+      text-align: left;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .setting-group label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .setting-group select {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 5px;
+      color: white;
+      padding: 5px 10px;
+      width: 100%;
+      margin-top: 5px;
+    }
+
+    .stats-display {
+      margin: 20px 0;
+      padding: 15px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin-top: 10px;
+    }
+
+    .stat-item {
+      text-align: center;
+    }
+
+    .stat-number {
+      display: block;
+      font-size: 18px;
+      font-weight: bold;
+      color: #4CAF50;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.7);
+      margin-top: 2px;
+    }
+
+    .settings-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    .settings-btn {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .settings-btn.primary {
+      background: #4CAF50;
+      color: white;
+    }
+
+    .settings-btn.danger {
+      background: #f44336;
+      color: white;
+    }
+
+    .settings-btn:not(.primary):not(.danger) {
+      background: rgba(255, 255, 255, 0.2);
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    .settings-btn:hover {
+      transform: translateY(-1px);
+      opacity: 0.9;
+    }
 
     #fileInput {
       display: none;
@@ -343,12 +693,15 @@
       <button class="tab-button" data-tab="history">📊 History</button>
     </div>
 
+    <!-- Queue Status -->
+    <div class="queue-status" id="queueStatus"></div>
+
     <div class="tab-content active" id="file-tab">
       <div class="drop-zone" id="dropZone">
-        <i>📎</i>
+        <i style="font-size: 48px; color: rgba(255, 255, 255, 0.7); margin-bottom: 15px; display: block;">📎</i>
         <p><strong>Drag & Drop</strong> your files here</p>
         <p>or click to browse</p>
-        <small>Max file size: 32MB</small>
+        <small>Max file size: 650MB • Multiple files supported</small>
       </div>
       
       <div class="file-info" id="fileInfo">
@@ -358,13 +711,19 @@
       </div>
 
       <input type="file" id="fileInput" multiple accept="*/*">
+      
+      <!-- Bulk Scan Area -->
+      <div id="bulkScanArea" class="bulk-scan-area"></div>
     </div>
 
     <div class="tab-content" id="url-tab">
       <input type="text" class="url-input" id="urlInput" placeholder="Enter URL to scan (e.g., https://example.com)">
+      <button type="button" onclick="scanner.addUrlToQueue()" style="width: 100%; padding: 8px; margin-top: 10px; border: none; border-radius: 5px; background: rgba(255,255,255,0.2); color: white; cursor: pointer;">
+        ➕ Add to Queue
+      </button>
       <div class="stats">
         <span>🔍 URL Analysis</span>
-        <span id="urlCount">0 scanned today</span>
+        <span id="urlCount">Enhanced scanning</span>
       </div>
     </div>
 
@@ -374,6 +733,25 @@
         <div id="recentScans">
           <div class="scan-item">
             <span class="scan-name">No recent scans</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Scan Statistics -->
+      <div id="scanStats" class="stats-display">
+        <h4>Scan Statistics</h4>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <span class="stat-number" id="todayScans">0</span>
+            <span class="stat-label">Today</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-number" id="threatsFound">0</span>
+            <span class="stat-label">Threats</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-number" id="cleanScans">0</span>
+            <span class="stat-label">Clean</span>
           </div>
         </div>
       </div>
@@ -388,22 +766,13 @@
       <span id="buttonText">🔍 Start Scan</span>
     </button>
 
+    <!-- Enhanced Results Area -->
     <div class="result" id="result"></div>
-
-    <div class="realtime-stats">
-      <div class="stat-card">
-        <span class="stat-number" id="todayScans">0</span>
-        <div class="stat-label">Today</div>
-      </div>
-      <div class="stat-card">
-        <span class="stat-number" id="threatsFound">0</span>
-        <div class="stat-label">Threats</div>
-      </div>
-    </div>
+    <div id="detailedResults" class="detailed-results"></div>
 
     <div class="stats">
       <span id="apiUsage">API: Ready</span>
-      <span id="connectionStatus">🟢 Online</span>
+      <span id="rateLimitStatus" class="rate-limit-status"></span>
     </div>
   </div>
 

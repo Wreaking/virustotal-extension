@@ -9,7 +9,7 @@
     "downloads",
     "storage",
     "notifications",
-    "clipboardRead",
+    "contextMenus",
     "alarms"
   ],
   "host_permissions": [
