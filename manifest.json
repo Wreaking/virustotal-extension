@@ -1,19 +1,44 @@
-
 {
   "manifest_version": 3,
-  "name": "VirusTotal Scanner",
-  "version": "1.0",
-  "description": "Scan files and links with VirusTotal",
-  "permissions": ["activeTab", "scripting"],
+  "name": "Advanced VirusTotal Scanner",
+  "version": "2.0",
+  "description": "Advanced file and URL scanner with VirusTotal integration, drag & drop support, and download monitoring",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads",
+    "storage",
+    "notifications",
+    "clipboardRead"
+  ],
+  "host_permissions": [
+    "https://www.virustotal.com/*",
+    "https://virustotal.com/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
+  
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
       "16": "images/icon16.png",
+      "32": "images/icon32.png",
       "48": "images/icon48.png",
       "128": "images/icon128.png"
     }
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["popup.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
