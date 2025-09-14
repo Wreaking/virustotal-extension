@@ -1,3 +1,10 @@
+
+
+
+
+
+
+
 async loadSettings() {
     try {
       const result = await chrome.storage.local.get(['vtApiKey', 'scanCount', 'autoScan', 'scanStats']);
@@ -8,7 +15,6 @@ async loadSettings() {
       
       // Initialize rate limiter with API key
       this.rateLimiter.apiKey = this.apiKey;
-
       
       this.elements.apiUsage.textclass VirusTotalScanner {
   constructor() {
@@ -22,7 +28,7 @@ async loadSettings() {
     this.setupEventListeners();
     this.loadScanHistory();
   }
-//getting elements, time to copy paste
+
   initializeElements() {
     this.elements = {
       tabButtons: document.querySelectorAll('.tab-button'),
@@ -406,8 +412,19 @@ async loadSettings() {
 
   async incrementScanCount() {
     this.scanCount++;
-    this.elements.scanCount.textContent = `Scans: ${this.scanCount}`;
-    await chrome.storage.local.set({ scanCount: this.scanCount });
+    this.stats.todayScans++;
+    this.stats.lastScanDate = new Date().toDateString();
+    
+    await chrome.storage.local.set({ 
+      scanCount: this.scanCount,
+      scanStats: this.stats 
+    });
+    
+    this.saveStats();
+  }
+
+  async saveStats() {
+    await chrome.storage.local.set({ scanStats: this.stats });
   }
 
   async saveScanHistory() {
@@ -482,4 +499,3 @@ let scanner;
 document.addEventListener('DOMContentLoaded', () => {
   scanner = new VirusTotalScanner();
 });
-
