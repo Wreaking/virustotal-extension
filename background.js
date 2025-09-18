@@ -163,21 +163,20 @@ async function scanURL(url, source = 'unknown') {
       throw new Error('Invalid URL provided');
     }
 
-    // Load API key from storage or use hardcoded fallback
-    let apiKey = "YOUR_ACTUAL_VIRUSTOTAL_API_KEY_HERE";
-    
-    try {
-      // Try to get API key from storage (set by popup script)
-      const stored = await chrome.storage.local.get(['virustotal_api_key']);
-      if (stored.virustotal_api_key) {
-        apiKey = stored.virustotal_api_key;
+    // Load API key from chrome.storage.local (user configured)
+    const stored = await chrome.storage.local.get(['virustotal_api_key']);
+    let apiKey = stored.virustotal_api_key;
+  
+    if (!apiKey || !validateApiKey(apiKey)) {
+      console.warn('No valid API key found in storage');
+      // Open popup to prompt configuration
+      try {
+        await chrome.action.openPopup();
+        throw new Error('VirusTotal API key not configured. Please configure in the popup settings.');
+      } catch (error) {
+        console.error('Failed to open popup for API key configuration:', error);
+        throw new Error('VirusTotal API key not configured. Please open the extension popup and set your API key.');
       }
-    } catch (error) {
-      console.warn('Failed to load API key from storage:', error);
-    }
-    
-    if (!apiKey || apiKey.trim() === '') {
-      throw new Error('VirusTotal API key not available.');
     }
 
     // Enhanced API key validation
@@ -189,8 +188,44 @@ async function scanURL(url, source = 'unknown') {
     if (!await checkGlobalRateLimit()) {
       throw new Error('Rate limit exceeded. Please wait before making more requests.');
     }
-
-    // Submit URL for scanning with enhanced error handling
+  
+    // Step 1: Canonicalize URL and compute SHA256 hash for lookup
+    const canonicalUrl = canonicalizeUrl(url);
+    const urlHash = await computeSha256(canonicalUrl);
+    console.log('Checking existing analysis for URL hash:', urlHash);
+  
+    // Step 2: Check if URL was previously analyzed
+    const existingResponse = await fetchWithBackgroundRateLimit(`https://www.virustotal.com/api/v3/urls/${urlHash}`, {
+      headers: {
+        'x-apikey': apiKey
+      }
+    });
+  
+    if (existingResponse.ok) {
+      const existingData = await existingResponse.json();
+      const attributes = existingData.data.attributes;
+      if (attributes.last_analysis_results && Object.keys(attributes.last_analysis_results).length > 0) {
+        // Use cached results if analysis is recent (last 24 hours)
+        const lastAnalysisDate = new Date(attributes.last_analysis_date * 1000);
+        const now = new Date();
+        const hoursDiff = (now - lastAnalysisDate) / (1000 * 60 * 60);
+        if (hoursDiff < 24) {
+          console.log('Using cached analysis results (age:', Math.round(hoursDiff), 'hours)');
+          const result = processAnalysisDataBackground(attributes);
+          return {
+            url: url,
+            analysisId: urlHash,
+            ...result,
+            fromCache: true,
+            cacheAge: Math.round(hoursDiff),
+            source: source
+          };
+        }
+      }
+    }
+  
+    // Step 3: Submit new scan if no recent cached results
+    console.log('No recent cached results, submitting new scan');
     const scanResponse = await fetchWithBackgroundRateLimit('https://www.virustotal.com/api/v3/urls', {
       method: 'POST',
       headers: {
@@ -210,6 +245,32 @@ async function scanURL(url, source = 'unknown') {
     const scanData = await scanResponse.json();
     const analysisId = scanData.data.id;
     
+function canonicalizeUrl(inputUrl) {
+  try {
+    const url = new URL(inputUrl);
+    // Normalize: remove fragment, lowercase protocol/host/path, sort query params
+    url.hash = '';
+    url.username = '';
+    url.password = '';
+    url.pathname = url.pathname.toLowerCase();
+    const params = new URLSearchParams();
+    Array.from(url.searchParams.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .forEach(([key, value]) => params.append(key.toLowerCase(), value.toLowerCase()));
+    url.search = params.toString();
+    return url.toString();
+  } catch {
+    return inputUrl.toLowerCase().trim();
+  }
+}
+
+async function computeSha256(input) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(input);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
     // Get analysis results with enhanced retry logic
     const result = await getAnalysisResultsBackground(analysisId);
     
@@ -284,7 +345,13 @@ async function fetchWithBackgroundRateLimit(url, options = {}) {
     }
     
     if (response.status === 401) {
-      throw new Error('Invalid API key. Please check your VirusTotal API key.');
+      console.warn('API key invalid - opening popup for configuration');
+      try {
+        await chrome.action.openPopup();
+      } catch (e) {
+        console.error('Could not open popup:', e);
+      }
+      throw new Error('Invalid API key. Please configure your VirusTotal API key in the extension popup.');
     }
     
     return response;
@@ -298,20 +365,24 @@ async function fetchWithBackgroundRateLimit(url, options = {}) {
 
 // Enhanced analysis results for background
 async function getAnalysisResultsBackground(analysisId) {
-  const maxAttempts = 10;
+  const maxAttempts = 8; // Reduced for faster response
   let attempts = 0;
   
   while (attempts < maxAttempts) {
     try {
       // Get API key from storage
-      let apiKey = "YOUR_ACTUAL_VIRUSTOTAL_API_KEY_HERE";
-      try {
-        const stored = await chrome.storage.local.get(['virustotal_api_key']);
-        if (stored.virustotal_api_key) {
-          apiKey = stored.virustotal_api_key;
+      const storedKey = await chrome.storage.local.get(['virustotal_api_key']);
+      let apiKey = storedKey.virustotal_api_key;
+  
+      if (!apiKey || !validateApiKey(apiKey)) {
+        console.warn('No valid API key for analysis retrieval');
+        try {
+          await chrome.action.openPopup();
+          throw new Error('VirusTotal API key not configured for analysis. Please configure in popup.');
+        } catch (error) {
+          console.error('Failed to open popup:', error);
+          throw new Error('API key not configured for analysis retrieval.');
         }
-      } catch (error) {
-        console.warn('Failed to load API key:', error);
       }
 
       const response = await fetchWithBackgroundRateLimit(`https://www.virustotal.com/api/v3/analyses/${analysisId}`, {
@@ -330,7 +401,9 @@ async function getAnalysisResultsBackground(analysisId) {
         return processAnalysisDataBackground(data.data.attributes);
       }
 
-      const waitTime = Math.min(2000 * Math.pow(1.5, attempts), 30000);
+      // Optimized wait times: start shorter, cap at 15s
+      const waitTime = Math.min(1000 + (attempts * 1000), 15000); // 1s + 1s per attempt, max 15s
+      console.log(`Analysis pending... attempt ${attempts + 1}/${maxAttempts}, waiting ${Math.round(waitTime/1000)}s`);
       await delay(waitTime);
       attempts++;
 
@@ -339,11 +412,11 @@ async function getAnalysisResultsBackground(analysisId) {
       if (attempts >= maxAttempts) {
         throw error;
       }
-      await delay(3000);
+      await delay(2000); // Shorter retry delay
     }
   }
 
-  throw new Error('Analysis timeout');
+  throw new Error('Analysis timeout - results may take longer than expected (try again in a few minutes)');
 }
 
 // Process analysis data in background (simplified version)
@@ -662,7 +735,7 @@ chrome.runtime.onInstalled.addListener((details) => {
       type: 'basic',
       iconUrl: 'images/icon48.png',
       title: '🛡️ VirusTotal Scanner Ready',
-      message: 'Click the extension icon to get started. You\'ll need a free API key from VirusTotal.'
+      message: 'Click the extension icon to get started. Configure your free VirusTotal API key in Settings (gear icon).'
     });
   } else if (details.reason === 'update') {
     console.log('VirusTotal Scanner updated to version', chrome.runtime.getManifest().version);

@@ -1,6 +1,3 @@
-// content.js - Advanced VirusTotal Scanner Content Script
-// Consolidated script with proper download handling and bypass system
-
 (function() {
   'use strict';
 
@@ -208,24 +205,51 @@
           ">❌ Cancel</button>
         </div>
       `;
-      
-      overlay.appendChild(dialog);
-      document.body.appendChild(overlay);
-      
-      // Handle button clicks
-      document.getElementById('scanBeforeDownload').addEventListener('click', () => {
+
+      // Attach event listeners after setting innerHTML to avoid CSP issues
+      const scanBtn = dialog.querySelector('#scanBeforeDownload');
+      scanBtn.addEventListener('click', () => {
         document.body.removeChild(overlay);
         this.scanUrlThenDownload(url, linkElement);
       });
       
-      document.getElementById('downloadNow').addEventListener('click', () => {
+      const downloadBtn = dialog.querySelector('#downloadNow');
+      downloadBtn.addEventListener('click', () => {
         document.body.removeChild(overlay);
         this.proceedWithDownload(linkElement);
       });
       
-      document.getElementById('cancelDownload').addEventListener('click', () => {
+      const cancelBtn = dialog.querySelector('#cancelDownload');
+      cancelBtn.addEventListener('click', () => {
         document.body.removeChild(overlay);
       });
+      
+      overlay.appendChild(dialog);
+      document.body.appendChild(overlay);
+      
+      // Handle button clicks using addEventListener
+      const scanBeforeDownloadBtn = document.getElementById('scanBeforeDownload');
+      if (scanBeforeDownloadBtn) {
+        scanBeforeDownloadBtn.addEventListener('click', () => {
+          document.body.removeChild(overlay);
+          this.scanUrlThenDownload(url, linkElement);
+        });
+      }
+      
+      const downloadNowBtn = document.getElementById('downloadNow');
+      if (downloadNowBtn) {
+        downloadNowBtn.addEventListener('click', () => {
+          document.body.removeChild(overlay);
+          this.proceedWithDownload(linkElement);
+        });
+      }
+      
+      const cancelDownloadBtn = document.getElementById('cancelDownload');
+      if (cancelDownloadBtn) {
+        cancelDownloadBtn.addEventListener('click', () => {
+          document.body.removeChild(overlay);
+        });
+      }
       
       // Close on overlay click
       overlay.addEventListener('click', (e) => {
@@ -314,6 +338,18 @@
             font-weight: bold;
           ">Cancel</button>
         `;
+  
+        // Attach event listeners after setting innerHTML
+        const proceedBtn = dialog.querySelector('#proceedDownload');
+        proceedBtn.addEventListener('click', () => {
+          document.body.removeChild(overlay);
+          this.proceedWithDownload(linkElement);
+        });
+  
+        const cancelBtn = dialog.querySelector('#cancelDownload');
+        cancelBtn.addEventListener('click', () => {
+          document.body.removeChild(overlay);
+        });
       } else {
         dialog.innerHTML = `
           <div style="font-size: 48px; margin-bottom: 20px;">⚠️</div>
@@ -338,12 +374,18 @@
             font-weight: bold;
           ">🚫 Don't Download</button>
         `;
+  
+        // Attach event listener after setting innerHTML
+        const cancelBtn = dialog.querySelector('#cancelDownload');
+        cancelBtn.addEventListener('click', () => {
+          document.body.removeChild(overlay);
+        });
       }
       
       overlay.appendChild(dialog);
       document.body.appendChild(overlay);
       
-      // Handle buttons
+      // Handle buttons using addEventListener
       const proceedBtn = document.getElementById('proceedDownload');
       if (proceedBtn) {
         proceedBtn.addEventListener('click', () => {
@@ -352,9 +394,12 @@
         });
       }
       
-      document.getElementById('cancelDownload').addEventListener('click', () => {
-        document.body.removeChild(overlay);
-      });
+      const cancelBtn = document.getElementById('cancelDownload');
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+          document.body.removeChild(overlay);
+        });
+      }
       
       // Close on overlay click
       overlay.addEventListener('click', (e) => {
@@ -615,29 +660,61 @@
           ">🚫 Block & Stay Safe</button>
         </div>
       `;
-      
-      overlay.appendChild(dialog);
-      document.body.appendChild(overlay);
-      
-      // Handle button clicks
-      document.getElementById('scanLinkFirst').addEventListener('click', () => {
+
+      // Attach event listeners after setting innerHTML to avoid CSP issues
+      const scanBtn = dialog.querySelector('#scanLinkFirst');
+      scanBtn.addEventListener('click', () => {
         document.body.removeChild(overlay);
         this.scanSuspiciousLink(url, linkElement);
       });
-      
-      document.getElementById('proceedAnyway').addEventListener('click', () => {
+
+      proceedBtn = dialog.querySelector('#proceedAnyway');
+      proceedBtn.addEventListener('click', () => {
         document.body.removeChild(overlay);
         // Set bypass flag and trigger original link
         linkElement.dataset.vtSuspiciousBypass = 'true';
         linkElement.click();
       });
-      
-      document.getElementById('blockLink').addEventListener('click', () => {
+
+      blockBtn = dialog.querySelector('#blockLink');
+      blockBtn.addEventListener('click', () => {
         document.body.removeChild(overlay);
         // Permanently disable the link
         this.permanentlyBlockLink(linkElement);
         this.showLinkBlockedConfirmation();
       });
+      
+      overlay.appendChild(dialog);
+      document.body.appendChild(overlay);
+      
+      // Handle button clicks using addEventListener
+      const scanLinkBtn = document.getElementById('scanLinkFirst');
+      if (scanLinkBtn) {
+        scanLinkBtn.addEventListener('click', () => {
+          document.body.removeChild(overlay);
+          this.scanSuspiciousLink(url, linkElement);
+        });
+      }
+      
+      const proceedBtn = document.getElementById('proceedAnyway');
+      if (proceedBtn) {
+        proceedBtn.addEventListener('click', () => {
+          document.body.removeChild(overlay);
+          // Set bypass flag and trigger original link
+          linkElement.dataset.vtSuspiciousBypass = 'true';
+          linkElement.click();
+        });
+      }
+      
+      const blockBtn = document.getElementById('blockLink');
+      if (blockBtn) {
+        blockBtn.addEventListener('click', () => {
+          document.body.removeChild(overlay);
+          // Permanently disable the link
+          this.permanentlyBlockLink(linkElement);
+          this.showLinkBlockedConfirmation();
+        });
+      }
       
       // Close on overlay click
       overlay.addEventListener('click', (e) => {
@@ -647,14 +724,15 @@
       });
       
       // Keyboard support
-      document.addEventListener('keydown', function escHandler(e) {
+      const escHandler = (e) => {
         if (e.key === 'Escape') {
           if (document.body.contains(overlay)) {
             document.body.removeChild(overlay);
           }
           document.removeEventListener('keydown', escHandler);
         }
-      });
+      };
+      document.addEventListener('keydown', escHandler);
     }
 
     scanSuspiciousLink(url, linkElement) {
@@ -705,14 +783,18 @@
         url: url,
         source: 'suspicious_link'
       }).then(response => {
-        document.body.removeChild(scanningOverlay);
+        if (document.body.contains(scanningOverlay)) {
+          document.body.removeChild(scanningOverlay);
+        }
         if (response && response.success) {
           this.showSuspiciousLinkScanResult(response.result, url, linkElement);
         } else {
           this.showScanError('Unable to scan link at this time.', linkElement);
         }
       }).catch(error => {
-        document.body.removeChild(scanningOverlay);
+        if (document.body.contains(scanningOverlay)) {
+          document.body.removeChild(scanningOverlay);
+        }
         console.error('Suspicious link scan failed:', error);
         this.showScanError('Scan failed: ' + error.message, linkElement);
       });
@@ -780,6 +862,18 @@
             ">Stay Here</button>
           </div>
         `;
+  
+        // Attach event listeners after setting innerHTML
+        const proceedBtn = dialog.querySelector('#proceedToLink');
+        proceedBtn.addEventListener('click', () => {
+          document.body.removeChild(overlay);
+          this.proceedWithSuspiciousLink(linkElement);
+        });
+  
+        const stayBtn = dialog.querySelector('#stayHere');
+        stayBtn.addEventListener('click', () => {
+          document.body.removeChild(overlay);
+        });
       } else {
         dialog.innerHTML = `
           <div style="font-size: 48px; margin-bottom: 20px;">🛑</div>
@@ -804,12 +898,19 @@
             font-weight: bold;
           ">🚫 Block Link</button>
         `;
+  
+        // Attach event listener after setting innerHTML
+        const blockBtn = dialog.querySelector('#blockDangerous');
+        blockBtn.addEventListener('click', () => {
+          document.body.removeChild(overlay);
+          this.showLinkBlockedConfirmation();
+        });
       }
       
       overlay.appendChild(dialog);
       document.body.appendChild(overlay);
       
-      // Handle button clicks
+      // Handle buttons using addEventListener
       const proceedBtn = document.getElementById('proceedToLink');
       if (proceedBtn) {
         proceedBtn.addEventListener('click', () => {
@@ -888,7 +989,7 @@
           <div style="font-size: 48px; margin-bottom: 20px;">⚠️</div>
           <h3 style="color: #ff9800; margin-bottom: 15px;">Scan Error</h3>
           <p style="color: #666; margin-bottom: 30px;">${error}</p>
-          <button onclick="document.body.removeChild(this.closest('div[style*=\"position: fixed\"]'))" style="
+          <button id="closeErrorOverlay" style="
             background: #ff9800;
             color: white;
             border: none;
@@ -900,8 +1001,22 @@
           ">OK</button>
         </div>
       `;
+
+      // Attach event listener after setting innerHTML
+      closeBtn = errorOverlay.querySelector('#closeErrorOverlay');
+      closeBtn.addEventListener('click', () => {
+        document.body.removeChild(errorOverlay);
+      });
       
       document.body.appendChild(errorOverlay);
+      
+      // Handle close button using addEventListener
+      closeBtn = document.getElementById('closeErrorOverlay');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+          document.body.removeChild(errorOverlay);
+        });
+      }
       
       // Auto-close after 5 seconds
       setTimeout(() => {
@@ -971,26 +1086,150 @@
       // Auto-remove after 3 seconds
       setTimeout(() => {
         if (document.body.contains(notification)) {
-          notification.style.transition = 'opacity 0.3s ease';
-          notification.style.opacity = '0';
-          setTimeout(() => {
-            if (document.body.contains(notification)) {
-              document.body.removeChild(notification);
-            }
-          }, 300);
+          document.body.removeChild(notification);
         }
       }, 3000);
       
       // Allow manual dismissal by clicking
       notification.addEventListener('click', () => {
         if (document.body.contains(notification)) {
-          notification.style.transition = 'opacity 0.3s ease';
-          notification.style.opacity = '0';
-          setTimeout(() => {
-            if (document.body.contains(notification)) {
-              document.body.removeChild(notification);
+          document.body.removeChild(notification);
+        }
+      });
+    }
+
+    scanCurrentPage() {
+      const currentUrl = window.location.href;
+      chrome.runtime.sendMessage({
+        action: 'scanUrl',
+        url: currentUrl,
+        source: 'content_script'
+      });
+    }
+
+    getPageInfo() {
+      return {
+        url: window.location.href,
+        title: document.title,
+        domain: window.location.hostname,
+        protocol: window.location.protocol,
+        hasDownloadLinks: this.countDownloadLinks(),
+        externalLinks: this.countExternalLinks()
+      };
+    }
+
+    countDownloadLinks() {
+      const links = document.querySelectorAll('a[href]');
+      let downloadCount = 0;
+      
+      links.forEach(link => {
+        if (link.hasAttribute('download') || this.isLikelyDownloadUrl(link.href)) {
+          downloadCount++;
+        }
+      });
+      
+      return downloadCount;
+    }
+
+    countExternalLinks() {
+      const links = document.querySelectorAll('a[href]');
+      const currentDomain = window.location.hostname;
+      let externalCount = 0;
+      
+      links.forEach(link => {
+        try {
+          const linkUrl = new URL(link.href);
+          if (linkUrl.hostname !== currentDomain) {
+            externalCount++;
+          }
+        } catch (e) {
+          // Invalid URL, skip
+        }
+      });
+      
+      return externalCount;
+    }
+
+    isLikelyDownloadUrl(url) {
+      return this.downloadExtensions.some(ext => 
+        url.toLowerCase().includes(ext.toLowerCase())
+      );
+    }
+
+    storeContextLink(url) {
+      chrome.runtime.sendMessage({
+        action: 'storeContextLink',
+        url: url
+      });
+    }
+
+    highlightSuspiciousLinks() {
+      const links = document.querySelectorAll('a[href]');
+      const suspiciousPatterns = [
+        { pattern: /bit\.ly/i, name: 'Bit.ly', reason: 'URL shortener that can hide malicious destinations' },
+        { pattern: /tinyurl/i, name: 'TinyURL', reason: 'URL shortener that can conceal harmful websites' },
+        { pattern: /t\.co/i, name: 'Twitter Link', reason: 'Shortened link that may lead to unsafe content' },
+        { pattern: /goo\.gl/i, name: 'Google Shortener', reason: 'Shortened URL that could redirect to malicious sites' },
+        { pattern: /ow\.ly/i, name: 'Ow.ly', reason: 'URL shortener that can mask dangerous destinations' },
+        { pattern: /is\.gd/i, name: 'Is.gd', reason: 'URL shortener with potential security risks' },
+        { pattern: /tinycc/i, name: 'Tiny.cc', reason: 'URL shortener that may hide malicious content' },
+        { pattern: /short\.link/i, name: 'Short.link', reason: 'URL shortener with potential security concerns' },
+        { pattern: /cutt\.ly/i, name: 'Cutt.ly', reason: 'URL shortener that could conceal threats' }
+      ];
+
+      links.forEach(link => {
+        if (link.dataset.vtSuspiciousChecked) return;
+        link.dataset.vtSuspiciousChecked = 'true';
+        
+        const url = link.href;
+        const suspiciousMatch = suspiciousPatterns.find(item => item.pattern.test(url));
+        
+        if (suspiciousMatch) {
+          // Visual indicator for suspicious links
+          link.style.border = '2px solid #ff9800';
+          link.style.borderRadius = '3px';
+          link.style.position = 'relative';
+          link.title = 'VirusTotal: Suspicious link detected - click for safety check';
+          
+          // Add warning icon
+          const warningIcon = document.createElement('span');
+          warningIcon.innerHTML = '⚠️';
+          warningIcon.style.cssText = `
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            font-size: 16px;
+            background: #ff9800;
+            border-radius: 50%;
+            padding: 2px;
+            z-index: 1000;
+            pointer-events: none;
+          `;
+          link.style.position = 'relative';
+          link.appendChild(warningIcon);
+          
+          // Block click and show explanation with bypass system
+          link.addEventListener('click', (e) => {
+            // Check if this click should bypass the prompt
+            if (link.dataset.vtSuspiciousBypass === 'true') {
+              // Remove bypass flag and allow native behavior
+              delete link.dataset.vtSuspiciousBypass;
+              return; // Let the click proceed normally
             }
-          }, 300);
+            
+            // Check if link is permanently blocked
+            if (link.dataset.vtBlocked === 'true') {
+              e.preventDefault();
+              e.stopPropagation();
+              this.showPermanentlyBlockedMessage();
+              return;
+            }
+            
+            // Prevent default and show prompt
+            e.preventDefault();
+            e.stopPropagation();
+            this.showSuspiciousLinkWarning(url, suspiciousMatch, link);
+          });
         }
       });
     }

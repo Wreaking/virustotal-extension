@@ -5,6 +5,7 @@
   "main": "popup.js",
   "scripts": {
     "generate-config": "node generate-config.js",
+    "generate-icons": "node create_icons.js",
     "dev": "npm run generate-config && http-server -p 5000 -c-1 --cors -o",
     "start": "http-server -p 5000 -c-1 --cors",
     "test": "echo \"Extension testing requires manual Chrome installation\""
@@ -19,6 +20,7 @@
   "license": "MIT",
   "dependencies": {
     "http-server": "^14.1.1",
-    "@replit/database": "^3.0.1"
+    "@replit/database": "^3.0.1",
+    "sharp": "^0.33.5"
   }
 }

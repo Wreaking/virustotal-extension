@@ -1,7 +1,7 @@
-
-// Script to create extension icons
+// Script to create extension icons using Sharp
 const fs = require('fs');
 const path = require('path');
+const sharp = require('sharp');
 
 // Create SVG icon content
 const svgIcon = `
@@ -43,10 +43,37 @@ const svgIcon = `
 </svg>
 `;
 
-// Save the SVG file
-fs.writeFileSync('icon.svg', svgIcon);
+// Save the SVG file first
+fs.writeFileSync(path.join(__dirname, 'icon.svg'), svgIcon);
 
-console.log('SVG icon created successfully!');
-console.log('To create PNG icons, you can use an online converter or install sharp:');
-console.log('npm install sharp');
-console.log('Then convert the SVG to different sizes for the extension.');
+// Icon sizes for Chrome extension
+const sizes = [16, 32, 48, 128];
+const imagesDir = path.join(__dirname, 'images');
+
+// Ensure images directory exists
+if (!fs.existsSync(imagesDir)) {
+  fs.mkdirSync(imagesDir, { recursive: true });
+}
+
+async function generateIcons() {
+  try {
+    console.log('Generating PNG icons from SVG...');
+    
+    for (const size of sizes) {
+      await sharp(Buffer.from(svgIcon, 'utf8'))
+        .resize(size, size)
+        .png()
+        .toFile(path.join(imagesDir, `icon${size}.png`));
+      
+      console.log(`Generated icon${size}.png (${size}x${size})`);
+    }
+    
+    console.log('All icons generated successfully!');
+    console.log('You can now reload your Chrome extension to use the new icons.');
+  } catch (error) {
+    console.error('Error generating icons:', error);
+  }
+}
+
+// Run the generation
+generateIcons();
