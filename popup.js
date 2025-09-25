@@ -64,47 +64,57 @@ class AdvancedVirusTotalScanner {
 
   async loadApiKey() {
     try {
-      // Try to get API key from storage first
-      let apiKey = await this.db.get('virustotal_api_key');
-      
-      if (!apiKey) {
-        // Load API key from secure config file generated from environment variables
-        try {
-          const response = await fetch('./extension-config.json');
-          if (!response.ok) {
-            throw new Error(`Config fetch failed: ${response.status}`);
-          }
-          
-          const config = await response.json();
-          apiKey = config.virustotalApiKey;
-          
-          if (!apiKey) {
-            throw new Error('API key not found in config');
-          }
-          
-          // Validate API key format
-          const apiKeyRegex = /^[a-f0-9]{64}$/i;
-          if (!apiKeyRegex.test(apiKey)) {
-            throw new Error('Invalid API key format');
-          }
-          
-          // Save it to database for future use
-          await this.db.set('virustotal_api_key', apiKey);
-          console.log('✅ API key loaded from secure config');
-          
-        } catch (configError) {
-          console.error('Failed to load config:', configError);
-          throw new Error('API key configuration not available. Please ensure VIRUSTOTAL_API_KEY environment variable is set.');
-        }
+      // Priority 1: Try to get API key from chrome.storage.local (user configured)
+      const storedKey = await chrome.storage.local.get(['virustotal_api_key']);
+      let apiKey = storedKey.virustotal_api_key;
+
+      if (apiKey && this.validateApiKey(apiKey)) {
+        this.apiKey = apiKey;
+        console.log('✅ API key loaded from user storage');
+        return;
       }
-      
-      this.apiKey = apiKey;
-      console.log('✅ API key loaded successfully');
+
+      // Priority 2: Fallback to database (legacy)
+      apiKey = await this.db.get('virustotal_api_key');
+      if (apiKey && this.validateApiKey(apiKey)) {
+        // Migrate to chrome.storage.local
+        await chrome.storage.local.set({ virustotal_api_key: apiKey });
+        this.apiKey = apiKey;
+        console.log('✅ API key loaded from database and migrated');
+        return;
+      }
+
+      // Priority 3: Load from config file (placeholder or env-generated)
+      try {
+        const response = await fetch('./extension-config.json');
+        if (!response.ok) {
+          throw new Error(`Config fetch failed: ${response.status}`);
+        }
+        
+        const config = await response.json();
+        apiKey = config.virustotalApiKey;
+        
+        if (apiKey && this.validateApiKey(apiKey)) {
+          // Save to storage for future use
+          await chrome.storage.local.set({ virustotal_api_key: apiKey });
+          this.apiKey = apiKey;
+          console.log('✅ API key loaded from config and saved to storage');
+          return;
+        } else {
+          throw new Error('Invalid API key in config');
+        }
+      } catch (configError) {
+        console.error('Failed to load config:', configError);
+      }
+
+      // No valid key found - prompt user
+      this.apiKey = null;
+      console.warn('No valid API key found - prompting user configuration');
+      this.promptForApiKeySetup();
     } catch (error) {
       console.error('❌ Failed to load API key:', error);
       this.apiKey = null;
-      this.showResult('❌ API key not configured. Please set up your VirusTotal API key in environment variables.', 'error');
-      throw new Error('API key not available');
+      this.promptForApiKeySetup();
     }
   }
 
@@ -363,7 +373,7 @@ class AdvancedVirusTotalScanner {
     if (this.isScanning || this.scanQueue.length === 0) return;
 
     if (!this.apiKey) {
-      this.promptForApiKey();
+      this.promptForApiKeySetup();
       return;
     }
 
@@ -524,6 +534,8 @@ class AdvancedVirusTotalScanner {
         reject(new Error('Upload timeout - file too large or connection too slow'));
       });
 
+      const formData = new FormData();
+      formData.append('file', file);
       xhr.open('POST', uploadUrl);
       xhr.timeout = 300000; // 5 minute timeout for large files
       xhr.send(formData);
@@ -579,16 +591,16 @@ class AdvancedVirusTotalScanner {
   }
 
   async getAnalysisResults(analysisId, resourceName) {
-    const maxAttempts = 15; // Increased for more reliability
+    const maxAttempts = 8; // Reduced for faster response
     let attempts = 0;
     const startTime = Date.now();
-    const maxWaitTime = 300000; // 5 minutes maximum wait
+    const maxWaitTime = 180000; // 3 minutes maximum wait (reduced)
 
     while (attempts < maxAttempts) {
       try {
         // Check if we've exceeded maximum wait time
         if (Date.now() - startTime > maxWaitTime) {
-          throw new Error('Analysis timeout - maximum wait time exceeded');
+          throw new Error('Analysis timeout - results may take longer (try again soon)');
         }
 
         const response = await this.fetchWithRateLimit(`https://www.virustotal.com/api/v3/analyses/${analysisId}`, {
@@ -613,17 +625,14 @@ class AdvancedVirusTotalScanner {
           throw new Error('Analysis failed on VirusTotal servers');
         }
 
-        // Update UI with current status
+        // Update UI with current status and progress
         if (this.elements.buttonText) {
-          this.elements.buttonText.textContent = `Analyzing... (${status})`;
+          this.elements.buttonText.textContent = `Analyzing... (${status}) - Attempt ${attempts + 1}/${maxAttempts}`;
         }
 
-        // Enhanced exponential backoff with jitter
-        const baseDelay = 2000;
-        const backoffMultiplier = Math.pow(1.6, attempts);
-        const jitter = Math.random() * 1000; // Add randomness to avoid thundering herd
-        const waitTime = Math.min(baseDelay * backoffMultiplier + jitter, 30000);
-
+        // Optimized wait times: linear increase, cap at 15s
+        const waitTime = Math.min(1000 + (attempts * 2000), 15000); // Start 1s, increase 2s per attempt, max 15s
+        console.log(`Analysis pending (${status})... waiting ${Math.round(waitTime/1000)}s`);
         await this.delay(waitTime);
         attempts++;
 
@@ -633,13 +642,13 @@ class AdvancedVirusTotalScanner {
           throw error;
         }
 
-        // Progressive delay for retries on errors
-        const errorDelay = Math.min(3000 * attempts, 15000);
+        // Shorter error retry delay
+        const errorDelay = Math.min(2000 * attempts, 10000);
         await this.delay(errorDelay);
       }
     }
 
-    throw new Error('Analysis timeout - maximum retry attempts exceeded');
+    throw new Error('Analysis timeout - maximum retry attempts exceeded. Try scanning again in a few minutes.');
   }
 
   // Enhanced API key validation
@@ -1261,19 +1270,73 @@ class AdvancedVirusTotalScanner {
     this.elements.recentScans.innerHTML = historyHtml;
   }
 
-  promptForApiKey() {
-    // API key is hardcoded, no need for user input
-    this.showResult('🛡️ API key is already configured and ready to use!', 'safe');
+  promptForApiKeySetup() {
+    const promptHtml = `
+      <div class="api-key-prompt">
+        <h3>🔑 Configure VirusTotal API Key</h3>
+        <p>To enable scanning, please enter your VirusTotal API key (free account available).</p>
+        <input type="password" id="setupApiKeyInput" placeholder="Paste your 64-character API key here" style="width:100%; padding:12px; margin:10px 0; border-radius:5px; border:1px solid rgba(255,255,255,0.3); background:rgba(255,255,255,0.1); color:white; font-size:14px;">
+        <div class="prompt-actions">
+          <button onclick="scanner.saveApiKeyFromPrompt()" class="scan-btn" style="width:48%;">Save Key</button>
+          <button onclick="scanner.closeApiKeyPrompt()" class="dismiss-btn" style="width:48%;">Later</button>
+        </div>
+        <small style="color:rgba(255,255,255,0.6); margin-top:15px; display:block;">
+          Get free key: <a href="https://www.virustotal.com/gui/join-us" target="_blank" style="color:#4CAF50;">Join VirusTotal</a>
+        </small>
+      </div>
+    `;
+    this.showResult(promptHtml, 'warning');
   }
 
-  validateApiKey(key) {
-    // Basic API key format validation (64 character hex string)
-    return /^[a-fA-F0-9]{64}$/.test(key);
+  saveApiKeyFromPrompt() {
+    const input = document.getElementById('setupApiKeyInput');
+    const key = input.value.trim();
+    if (this.validateApiKey(key)) {
+      chrome.storage.local.set({ virustotal_api_key: key }).then(() => {
+        this.apiKey = key;
+        this.showResult('✅ API key saved! You can now scan files and URLs.', 'safe');
+        this.loadSettingsOptimized(); // Refresh UI
+      });
+    } else {
+      document.getElementById('setupApiKeyInput').style.borderColor = '#f44336';
+      this.showResult('❌ Invalid API key format. Must be 64 hexadecimal characters.', 'error');
+    }
+  }
+
+  closeApiKeyPrompt() {
+    this.elements.result.classList.remove('show');
   }
 
   async saveApiKey(apiKey) {
-    // API key is hardcoded, no saving needed
-    this.showResult('🛡️ API key is already configured!', 'safe');
+    if (this.validateApiKey(apiKey)) {
+      await chrome.storage.local.set({ virustotal_api_key: apiKey });
+      this.apiKey = apiKey;
+      console.log('API key saved to storage');
+      this.showResult('✅ API key saved successfully!', 'safe');
+      // Also save to db for legacy support
+      await this.db.set('virustotal_api_key', apiKey);
+      this.updateUIStatusOptimized();
+    } else {
+      this.showResult('❌ Invalid API key format. Please check and try again.', 'error');
+    }
+  }
+
+  saveApiKeyFromSettings() {
+    const input = document.getElementById('apiKeyInput');
+    const key = input.value.trim();
+    this.saveApiKey(key);
+  }
+
+  updateApiKeyInput() {
+    chrome.storage.local.get(['virustotal_api_key']).then(result => {
+      const statusEl = document.getElementById('apiKeyStatus');
+      if (result.virustotal_api_key && this.validateApiKey(result.virustotal_api_key)) {
+        document.getElementById('apiKeyInput').value = '******** (configured)';
+        statusEl.innerHTML = '<span style="color:#4CAF50;">✅ Configured</span>';
+      } else {
+        statusEl.innerHTML = '<span style="color:#f44336;">⚠️ Not configured - scans will fail</span>';
+      }
+    });
   }
 
   showAdvancedSettings() {
@@ -1294,6 +1357,14 @@ class AdvancedVirusTotalScanner {
             <option value="4" ${this.rateLimit.maxRequests === 4 ? 'selected' : ''}>Free (4/min)</option>
             <option value="1000" ${this.rateLimit.maxRequests === 1000 ? 'selected' : ''}>Premium (1000/min)</option>
           </select>
+        </div>
+
+        <div class="setting-group">
+          <h4>🔑 VirusTotal API Key</h4>
+          <input type="password" id="apiKeyInput" placeholder="Enter your 64-character API key" style="width:100%; padding:10px; margin:10px 0; border-radius:5px; border:1px solid rgba(255,255,255,0.3); background:rgba(255,255,255,0.1); color:white;">
+          <button onclick="scanner.saveApiKeyFromSettings()" class="settings-btn primary" style="width:100%; margin:5px 0;">Save API Key</button>
+          <small style="color:rgba(255,255,255,0.6);">Get free key at <a href="https://www.virustotal.com/gui/join-us" target="_blank" style="color:#4CAF50;">virustotal.com</a> (64 hex chars)</small>
+          <div id="apiKeyStatus" style="margin-top:10px; font-size:12px;"></div>
         </div>
 
         <div class="stats-display">
@@ -1329,10 +1400,11 @@ class AdvancedVirusTotalScanner {
     `;
 
     this.showResult(settingsHtml, 'scanning');
+    this.updateApiKeyInput();
   }
 
   updateApiKey() {
-    this.showResult('🛡️ API key is hardcoded and cannot be changed for security.', 'info');
+    this.promptForApiKeySetup();
   }
 
   async clearAllHistory() {
@@ -1401,8 +1473,6 @@ class AdvancedVirusTotalScanner {
   delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
-
-  // Remove the old loadScanHistoryOptimized method since we now use loadScanHistoryFromDB
 
   // Enhanced download prompt handling
   handleNotificationScanRequest(notificationId) {

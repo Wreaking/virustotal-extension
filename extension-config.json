@@ -1,10 +1,10 @@
 {
-  "virustotalApiKey": "a4b3c2d1e5f6789012345678901234567890abcdef1234567890abcdef123456",
+  "virustotalApiKey": "27d273df63039f2e3edb1af7dc6bb6aaf43a70d6ce3db57f1a1cdc7eaff9a33c",
   "apiVersion": "v3",
   "baseUrl": "https://www.virustotal.com/api/v3",
   "rateLimit": {
     "requests": 4,
     "windowMs": 60000
   },
-  "generated": "2025-09-14T19:47:12.107Z"
+  "generated": "2025-09-18T18:01:18.909Z"
 }
