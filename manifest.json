@@ -3,6 +3,10 @@
   "name": "Advanced VirusTotal Scanner",
   "version": "2.0",
   "description": "Advanced file and URL scanner with VirusTotal integration, drag & drop support, and download monitoring",
+  "web_accessible_resources": [{
+    "resources": ["extension-config.json"],
+    "matches": ["<all_urls>"]
+  }],
   "permissions": [
     "activeTab",
     "scripting",

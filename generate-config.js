@@ -1,20 +1,15 @@
 // generate-config.js - Build script to generate config from environment variables
 const fs = require('fs');
 const path = require('path');
+require('dotenv').config();
 
-// Get API key from environment variable
-const apiKey = process.env.VIRUSTOTAL_API_KEY;
+// Get API key from environment variable (optional for development)
+const apiKey = process.env.VIRUSTOTAL_API_KEY || 'YOUR_API_KEY_HERE';
 
-if (!apiKey) {
-  console.error('VIRUSTOTAL_API_KEY environment variable not set!');
-  process.exit(1);
-}
-
-// Validate API key format (VirusTotal keys are 64-character hex strings)
-const apiKeyRegex = /^[a-f0-9]{64}$/i;
-if (!apiKeyRegex.test(apiKey)) {
-  console.error('Invalid VirusTotal API key format. Expected 64-character hexadecimal string.');
-  process.exit(1);
+console.log('📋 Generating extension configuration...');
+if (apiKey === 'YOUR_API_KEY_HERE') {
+  console.warn('⚠️  No VIRUSTOTAL_API_KEY environment variable set - using placeholder');
+  console.log('💡 Users will be prompted to enter their API key in the extension');
 }
 
 // Create configuration object

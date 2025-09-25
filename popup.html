@@ -904,7 +904,9 @@
     <div class="tab-buttons">
       <button class="tab-button active" data-tab="file">📁 Files</button>
       <button class="tab-button" data-tab="url">🔗 URLs</button>
+      <button class="tab-button" data-tab="queue">⏱️ Queue</button>
       <button class="tab-button" data-tab="history">📊 History</button>
+      <button class="tab-button" data-tab="settings">⚙️ Settings</button>
     </div>
 
     <!-- Queue Status -->
@@ -941,6 +943,33 @@
       </div>
     </div>
 
+    <!-- Queue Tab -->
+    <div class="tab-content" id="queue-tab">
+      <div class="queue-header">
+        <h3>Scan Queue</h3>
+        <div class="queue-controls">
+          <button onclick="scanner.pauseQueue()" class="queue-btn pause">⏸️ Pause</button>
+          <button onclick="scanner.resumeQueue()" class="queue-btn resume">▶️ Resume</button>
+          <button onclick="scanner.clearQueue()" class="queue-btn clear">🗑️ Clear</button>
+        </div>
+      </div>
+      <div id="queueList" class="queue-list"></div>
+      <div class="queue-stats">
+        <div class="stat-item">
+          <span class="stat-label">Queued:</span>
+          <span id="queueCount" class="stat-value">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Processing:</span>
+          <span id="processingCount" class="stat-value">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Completed:</span>
+          <span id="completedCount" class="stat-value">0</span>
+        </div>
+      </div>
+    </div>
+
     <div class="tab-content" id="history-tab">
       <div class="recent-scans">
         <h3>Recent Scans</h3>
@@ -971,6 +1000,61 @@
       </div>
     </div>
 
+    <!-- Settings Tab -->
+    <div class="tab-content" id="settings-tab">
+      <div class="settings-section">
+        <h3>🛡️ Security Settings</h3>
+        <div class="setting-item">
+          <label class="setting-toggle">
+            <input type="checkbox" id="autoScanDownloads" checked>
+            <span class="toggle-slider"></span>
+            Auto-scan downloaded files
+          </label>
+        </div>
+        <div class="setting-item">
+          <label class="setting-toggle">
+            <input type="checkbox" id="scanPermissionEnabled" checked>
+            <span class="toggle-slider"></span>
+            Ask permission before scanning
+          </label>
+        </div>
+        <div class="setting-item">
+          <label class="setting-toggle">
+            <input type="checkbox" id="rateLimitNotifications" checked>
+            <span class="toggle-slider"></span>
+            Rate limit notifications
+          </label>
+        </div>
+      </div>
+      
+      <div class="settings-section">
+        <h3>⚡ Performance Settings</h3>
+        <div class="setting-item">
+          <label>Max concurrent scans:</label>
+          <select id="maxConcurrentScans">
+            <option value="1">1 (Conservative)</option>
+            <option value="2" selected>2 (Recommended)</option>
+            <option value="3">3 (Aggressive)</option>
+          </select>
+        </div>
+      </div>
+      
+      <div class="settings-section">
+        <h3>🔑 API Settings</h3>
+        <div class="setting-item">
+          <input type="password" id="apiKeyInput" placeholder="Enter your VirusTotal API key">
+          <button onclick="scanner.saveApiKey()" class="save-btn">💾 Save Key</button>
+        </div>
+        <div class="api-status" id="apiStatus">No API key configured</div>
+      </div>
+      
+      <div class="settings-section">
+        <h3>📊 Data Management</h3>
+        <button onclick="scanner.exportHistory()" class="data-btn export">📤 Export History</button>
+        <button onclick="scanner.clearHistory()" class="data-btn danger">🗑️ Clear History</button>
+      </div>
+    </div>
+
     <div class="progress-bar" id="progressBar">
       <div class="progress-fill" id="progressFill"></div>
     </div>
@@ -990,6 +1074,13 @@
     </div>
   </div>
 
+  <link rel="stylesheet" href="enhanced-styles.css">
+  <script src="enhanced-scanner.js"></script>
+  <script src="database-manager.js"></script>
   <script src="popup.js"></script>
+  
+  <!-- Enhanced File Inputs -->
+  <input type="file" id="multipleFileInput" multiple webkitdirectory="false" style="display: none;">
+  <input type="file" id="folderInput" webkitdirectory="true" style="display: none;">
 </body>
 </html>

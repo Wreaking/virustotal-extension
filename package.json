@@ -4,11 +4,12 @@
   "description": "Advanced file and URL scanner with VirusTotal integration, drag & drop support, and download monitoring",
   "main": "popup.js",
   "scripts": {
-    "generate-config": "node generate-config.js",
+    "generate-config": "node -r dotenv/config generate-config.js",
     "generate-icons": "node create_icons.js",
-    "dev": "npm run generate-config && http-server -p 5000 -c-1 --cors -o",
+    "dev": "npm run generate-config && npx http-server -p 5000 -c-1 --cors -a 0.0.0.0",
     "start": "http-server -p 5000 -c-1 --cors",
-    "test": "echo \"Extension testing requires manual Chrome installation\""
+    "test": "echo \"Extension testing requires manual Chrome installation\"",
+    "build": "npm run generate-config && npm run generate-icons"
   },
   "keywords": [
     "chrome-extension",
@@ -19,8 +20,10 @@
   "author": "Advanced VirusTotal Scanner",
   "license": "MIT",
   "dependencies": {
-    "http-server": "^14.1.1",
     "@replit/database": "^3.0.1",
+    "@supabase/supabase-js": "^2.58.0",
+    "dotenv": "^16.3.1",
+    "http-server": "^14.1.1",
     "sharp": "^0.33.5"
   }
 }
